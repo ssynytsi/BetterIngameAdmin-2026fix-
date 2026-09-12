@@ -214,7 +214,11 @@ function Admin:OnTBanPlayer(p_Player, p_Args)
 		return
 	end
 
-	if p_Args[2] == nil then
+	-- The WebUI sends an empty string when the duration box is left blank, which
+	-- is not nil, so it reached p_Args[2]*60 and threw "attempt to mul a string".
+	p_Args[2] = tonumber(p_Args[2])
+
+	if p_Args[2] == nil or p_Args[2] <= 0 then
 		p_Args[2] = 60
 	end
 

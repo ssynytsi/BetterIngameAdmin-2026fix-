@@ -20,6 +20,7 @@ local m_Scoreboard = require('Scoreboard')
 require('Squad')
 require('ChatLagFix')
 require('VoipSettings')
+require('BiaManager')
 
 function BetterIngameAdmin:__init()
 	print("Initializing BetterIngameAdmin")

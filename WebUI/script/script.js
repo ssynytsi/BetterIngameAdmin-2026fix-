@@ -1,3 +1,40 @@
+
+
+/* FOV/sens persistence is handled in client ZoomLevel.lua via SettingsManager
+   (this PC). Apply buttons already DispatchEvent Set* which Lua saves. */
+function biaSaveLookLocal(patch) {
+  /* no-op: WebUI:SetFieldOfView / SetMouseSensitivity* persist in Lua */
+}
+
+function biaLoadLookLocal() {
+  return null;
+}
+
+function biaApplyLookLocalToGame() {
+  /* Lua re-applies on Extension:Loaded / Level:Loaded */
+}
+
+
+
+var biaLookLocalApplied = false;
+function biaEnsureLookLocalApplied() {
+  if (biaLookLocalApplied) {
+    return;
+  }
+  biaLookLocalApplied = true;
+  biaApplyLookLocalToGame();
+}
+
+function biaShowLookHint(show) {
+  var el = document.getElementById("lookSettingsHint");
+  if (!el) return;
+  if (show) {
+    el.classList.add("open");
+  } else {
+    el.classList.remove("open");
+  }
+}
+
 /* Region IsAdmin */
 isOwner = false;
 admin = false;
@@ -97,7 +134,7 @@ function action(playerName, squadId, isSquadPrivate) {
   playerName = escapestring(playerName, true);
 
   WebUI.Call("DispatchEvent", "WebUI:IgnoreReleaseTab");
-  document.getElementById("popup").style.display = "inline";
+  document.getElementById("popup").style.display = "flex";
   if (playerNameCompare == localPlayer) {
     document.getElementById("popup").innerHTML =
       '<div id="titlepopup">Actions for yourself<div id="close" onclick="closepopup()"></div></div></div>';
@@ -233,6 +270,12 @@ function adminpopup(playerName) {
       playerName +
       '&grave;)">Edit rights</div>';
   }
+  if (canEditGameAdminList == true || isOwner == true) {
+    document.getElementById("popupelements").innerHTML +=
+      '<div id="popupelement" onclick="promoteToAdmin(&grave;' +
+      playerName +
+      '&grave;)">Promote to admin</div>';
+  }
   if (
     document.getElementById("popupelements").offsetHeight >
     document.getElementById("popup").offsetHeight
@@ -251,7 +294,7 @@ function closepopup() {
 
 /* Region Popup Response */
 function showPopupResponse(message) {
-  document.getElementById("popupResponse").style.display = "block";
+  document.getElementById("popupResponse").style.display = "flex";
   document.getElementById("titlepopupResponse").innerHTML =
     "<span>" + message[0] + "</span>";
   document.getElementById("popupelementResponse").innerHTML = message[1];
@@ -294,13 +337,19 @@ function startvotekick(args) {
   yesvotes = 1;
   novotes = 0;
   if (showHideVotings == true) {
-    document.getElementById("votepopup").style.display = "inline";
+    document.getElementById("votepopup").classList.add("shown");
   }
   document.getElementById("votetitleleft").innerHTML =
     "<p>Votekick: " + playerName + "</p>";
   i = 1;
   width = document.getElementById("orangeRect").clientWidth;
-  while (document.getElementById("votetitleleft").clientWidth >= width * 0.7) {
+  // width is 0 while the popup is still hidden, which made this loop
+  // never terminate and hung the client. Guard on both ends.
+  while (
+    width > 0 &&
+    i < playerName.length &&
+    document.getElementById("votetitleleft").clientWidth >= width * 0.7
+  ) {
     length = playerName.length - i;
     document.getElementById("votetitleleft").innerHTML =
       "<p>Votekick: " + playerName.slice(0, length) + "...</p>";
@@ -324,12 +373,15 @@ function startvoteban(args) {
   yesvotes = 1;
   novotes = 0;
   if (showHideVotings == true) {
-    document.getElementById("votepopup").style.display = "inline";
+    document.getElementById("votepopup").classList.add("shown");
   }
   document.getElementById("votetitleleft").innerHTML =
     "<p>Voteban: " + playerName + "</p>";
   i = 1;
-  while (document.getElementById("votetitleleft").clientWidth >= 200) {
+  while (
+    i < playerName.length &&
+    document.getElementById("votetitleleft").clientWidth >= 200
+  ) {
     length = playerName.length - i;
     document.getElementById("votetitleleft").innerHTML =
       "<p>Voteban: " + playerName.slice(0, length) + "...</p>";
@@ -347,7 +399,7 @@ function startsurrender() {
   yesvotes = 1;
   novotes = 0;
   if (showHideVotings == true) {
-    document.getElementById("votepopup").style.display = "inline";
+    document.getElementById("votepopup").classList.add("shown");
   }
   document.getElementById("votetitleleft").style.width = "80%";
   document.getElementById("votetitleleft").innerHTML = "<p>Surrender</p>";
@@ -389,7 +441,7 @@ function updateTimer() {
       "<p>" + secondsLeft + " sec</p>";
     if (secondsLeft == 0) {
       isVoteInProgress = false;
-      document.getElementById("votepopup").style.display = "none";
+      document.getElementById("votepopup").classList.remove("shown");
       document.getElementById("voteyes").style.fontWeight = null;
       document.getElementById("voteno").style.fontWeight = null;
       document.getElementById("votetitleleft").style.width = null;
@@ -779,7 +831,7 @@ function getServerInfo(args) {
       map = generateMapName(args[44][i]);
       let k = (i + 1) / 3;
       document.getElementById("mapRotationConfiguration").innerHTML +=
-        '<div onclick="setNextMap(' +
+        '<div onclick="biaQueueMapByIndex(' +
         k +
         ')" class="mapRotationFieldElement" id="mapRotationFieldElement' +
         k +
@@ -827,7 +879,7 @@ function getServerInfo(args) {
         ).innerHTML =
           '<span style="vertical-align: top;">' +
           mode +
-          '</span><img id="currentMap2" src=""/><img style="margin-left: 0;" id="nextMap2" src=""/>';
+          '</span><div class="mapMarker current" id="currentMap2"></div><div class="mapMarker next" id="nextMap2"></div>';
         document.getElementById("serverInfoMapBody").innerHTML = map;
         let mapUrl = generateMapUrl(args[44][n]);
         document.getElementById("serverInfoMapImg").style.backgroundImage =
@@ -845,7 +897,7 @@ function getServerInfo(args) {
         ).innerHTML =
           '<span style="vertical-align: top;">' +
           mode +
-          '</span><img id="currentMap" src=""/><img style="margin-left: 0;" id="nextMap" src=""/>';
+          '</span><div class="mapMarker current" id="currentMap"></div><div class="mapMarker next" id="nextMap"></div>';
       } else if (k - 1 == currentMapIndex) {
         let map = generateMapName(args[44][n]);
         document.getElementById("mapRotationCurrentMap").innerHTML =
@@ -855,7 +907,7 @@ function getServerInfo(args) {
         ).innerHTML =
           '<span style="vertical-align: top;">' +
           mode +
-          '</span><img id="currentMap2" src=""/>';
+          '</span><div class="mapMarker current" id="currentMap2"></div>';
         document.getElementById("serverInfoMapBody").innerHTML = map;
         let mapUrl = generateMapUrl(args[44][n]);
         document.getElementById("serverInfoMapImg").style.backgroundImage =
@@ -873,7 +925,7 @@ function getServerInfo(args) {
         ).innerHTML =
           '<span style="vertical-align: top;">' +
           mode +
-          '</span><img id="currentMap" src=""/>';
+          '</span><div class="mapMarker current" id="currentMap"></div>';
       } else if (k - 1 == nextMapIndex) {
         document.getElementById("mapRotationNextMap").innerHTML =
           map + ", " + mode;
@@ -882,13 +934,13 @@ function getServerInfo(args) {
         ).innerHTML =
           '<span style="vertical-align: top;">' +
           mode +
-          '</span><img id="nextMap2" src=""/>';
+          '</span><div class="mapMarker next" id="nextMap2"></div>';
         document.getElementById(
           "mapListFieldElement" + k + "gameMode"
         ).innerHTML =
           '<span style="vertical-align: top;">' +
           mode +
-          '</span><img id="nextMap" src=""/>';
+          '</span><div class="mapMarker next" id="nextMap"></div>';
       }
     } else if (o == 3) {
       n = i - 2;
@@ -999,7 +1051,7 @@ function getServerInfo(args) {
     document.getElementById("serverSetupCurrentPreset").innerHTML = "Normal";
     document.getElementById("currentPresetInManagePresets").innerHTML =
       "Normal";
-    document.getElementById("presetNormal").style.display = "block";
+    document.getElementById("presetNormal").style.display = "flex";
     document.getElementById("presetHardcore").style.display = "none";
     document.getElementById("presetInfantry").style.display = "none";
     document.getElementById("presetHardcoreNoMap").style.display = "none";
@@ -1013,7 +1065,7 @@ function getServerInfo(args) {
       "Infantry";
     document.getElementById("presetNormal").style.display = "none";
     document.getElementById("presetHardcore").style.display = "none";
-    document.getElementById("presetInfantry").style.display = "block";
+    document.getElementById("presetInfantry").style.display = "flex";
     document.getElementById("presetHardcoreNoMap").style.display = "none";
     document.getElementById("presetCustom").style.display = "none";
   } else if (varsPresetHardcore == true) {
@@ -1024,7 +1076,7 @@ function getServerInfo(args) {
     document.getElementById("currentPresetInManagePresets").innerHTML =
       "Hardcore";
     document.getElementById("presetNormal").style.display = "none";
-    document.getElementById("presetHardcore").style.display = "block";
+    document.getElementById("presetHardcore").style.display = "flex";
     document.getElementById("presetInfantry").style.display = "none";
     document.getElementById("presetHardcoreNoMap").style.display = "none";
     document.getElementById("presetCustom").style.display = "none";
@@ -1040,7 +1092,7 @@ function getServerInfo(args) {
     document.getElementById("presetNormal").style.display = "none";
     document.getElementById("presetHardcore").style.display = "none";
     document.getElementById("presetInfantry").style.display = "none";
-    document.getElementById("presetHardcoreNoMap").style.display = "block";
+    document.getElementById("presetHardcoreNoMap").style.display = "flex";
     document.getElementById("presetCustom").style.display = "none";
   } else {
     document.getElementById("serverInfoPresetConfigurationBody").innerHTML =
@@ -1053,7 +1105,7 @@ function getServerInfo(args) {
     document.getElementById("presetHardcore").style.display = "none";
     document.getElementById("presetInfantry").style.display = "none";
     document.getElementById("presetHardcoreNoMap").style.display = "none";
-    document.getElementById("presetCustom").style.display = "block";
+    document.getElementById("presetCustom").style.display = "flex";
   }
   document.getElementById("serverInfoOwnerBody").innerHTML = args[51];
 }
@@ -1296,7 +1348,7 @@ function generateModeName(mode) {
 
 function showMapRotation() {
   document.getElementById("serverInfoConfiguration").style.display = "none";
-  document.getElementById("mapListConfiguration").style.display = "block";
+  document.getElementById("mapListConfiguration").style.display = "flex";
   document.getElementById("modListConfiguration").style.display = "none";
   document.getElementById("serverInfoMapRotationBody").style.color = "#000";
   document.getElementById("serverInfoMapRotationBody").style.fontWeight = "900";
@@ -1318,7 +1370,7 @@ function showMapRotation() {
   document.getElementById("nextMap").src = "fb://UI/Art/Menu/Icons/map_next";
 }
 function showServerInfoConfiguration() {
-  document.getElementById("serverInfoConfiguration").style.display = "block";
+  document.getElementById("serverInfoConfiguration").style.display = "flex";
   document.getElementById("mapListConfiguration").style.display = "none";
   document.getElementById("modListConfiguration").style.display = "none";
   document.getElementById("serverInfoPresetConfigurationBody").style.color =
@@ -1339,7 +1391,7 @@ function showServerInfoConfiguration() {
 function showModList() {
   document.getElementById("serverInfoConfiguration").style.display = "none";
   document.getElementById("mapListConfiguration").style.display = "none";
-  document.getElementById("modListConfiguration").style.display = "block";
+  document.getElementById("modListConfiguration").style.display = "flex";
   document.getElementById("serverInfoPresetConfigurationBody").style.color =
     null;
   document.getElementById(
@@ -1437,11 +1489,9 @@ function saveMouseSensitivityMultipliers() {
     "WebUI:SetMouseSensitivityMultipliers",
     JSON.stringify(args)
   );
-  WebUI.Call(
-    "DispatchEvent",
-    "WebUI:SetMouseSensitivity",
-    document.getElementById("actualMouseSensitivity").value
-  );
+  var sensBase = document.getElementById("actualMouseSensitivity").value;
+  WebUI.Call("DispatchEvent", "WebUI:SetMouseSensitivity", sensBase);
+  biaSaveLookLocal({ sens: args, sensBase: sensBase });
   closeSmart();
 }
 
@@ -1545,6 +1595,7 @@ function saveFieldOfView() {
     args.push(document.getElementById("20xFov").value);
   }
   WebUI.Call("DispatchEvent", "WebUI:SetFieldOfView", JSON.stringify(args));
+  biaSaveLookLocal({ fov: args });
   closeSmart();
 }
 /* Endregion */
@@ -1579,11 +1630,11 @@ function move(playerName) {
   document.getElementById("popup").innerHTML +=
     '<div id="popupelements"></div>';
   document.getElementById("popupelements").innerHTML +=
-    '<div class="dropdown"><input onclick="teamDropdownOpen()" id="teamIdInput" type="textbox" name="1" value="Team US"></input><div class="dropDownButton" onclick="teamDropdownOpen()"></div><div id="teamNamesDropDown" class="dropdown-content"><p onclick="teamDropdownClose(&grave;1&grave;, &grave;Team US&grave;)">Team US</p><p onclick="teamDropdownClose(&grave;2&grave;, &grave;Team RU&grave;)">Team RU</p></div></div>';
+    '<div class="dropdown"><input onclick="teamDropdownOpen()" id="teamIdInput" type="text" name="1" value="Team US"></input><div class="dropDownButton" onclick="teamDropdownOpen()"></div><div id="teamNamesDropDown" class="dropdown-content"><p onclick="teamDropdownClose(&grave;1&grave;, &grave;Team US&grave;)">Team US</p><p onclick="teamDropdownClose(&grave;2&grave;, &grave;Team RU&grave;)">Team RU</p></div></div>';
   document.getElementById("popupelements").innerHTML +=
-    '<div class="dropdown"><input onclick="squadDropdownOpen()" id="squadIdInput" type="textbox" name="0" value="No Squad"></input><div class="dropDownButton" onclick="squadDropdownOpen()"></div><div id="squadNamesDropDown" class="dropdown-content"><p onclick="squadDropdownClose(&grave;0&grave;, &grave;No Squad&grave;)">No Squad</p><p onclick="squadDropdownClose(&grave;1&grave;, &grave;Squad Alpha&grave;)">Squad Alpha</p><p onclick="squadDropdownClose(&grave;2&grave;, &grave;Squad Bravo&grave;)">Squad Bravo</p><p onclick="squadDropdownClose(&grave;3&grave;, &grave;Squad Charlie&grave;)">Squad Charlie</p><p onclick="squadDropdownClose(&grave;4&grave;, &grave;Squad Delta&grave;)">Squad Delta</p><p onclick="squadDropdownClose(&grave;5&grave;, &grave;Squad Echo&grave;)">Squad Echo</p><p onclick="squadDropdownClose(&grave;6&grave;, &grave;Squad Foxtrot&grave;)">Squad Foxtrot</p><p onclick="squadDropdownClose(&grave;7&grave;, &grave;Squad Golf&grave;)">Squad Golf</p><p onclick="squadDropdownClose(&grave;8&grave;, &grave;Squad Hotel&grave;)">Squad Hotel</p><p onclick="squadDropdownClose(&grave;9&grave;, &grave;Squad India&grave;)">Squad India</p><p onclick="squadDropdownClose(&grave;10&grave;, &grave;Squad Juliet&grave;)">Squad Juliet</p><p onclick="squadDropdownClose(&grave;11&grave;, &grave;Squad Kilo&grave;)">Squad Kilo</p><p onclick="squadDropdownClose(&grave;12&grave;, &grave;Squad Lima&grave;)">Squad Lima</p><p onclick="squadDropdownClose(&grave;13&grave;, &grave;Squad Mike&grave;)">Squad Mike</p><p onclick="squadDropdownClose(&grave;14&grave;, &grave;Squad November&grave;)">Squad November</p><p onclick="squadDropdownClose(&grave;15&grave;, &grave;Squad Oscar&grave;)">Squad Oscar</p><p onclick="squadDropdownClose(&grave;16&grave;, &grave;Squad Papa&grave;)">Squad Papa</p><p onclick="squadDropdownClose(&grave;17&grave;, &grave;Squad Quebec&grave;)">Squad Quebec</p><p onclick="squadDropdownClose(&grave;18&grave;, &grave;Squad Romeo&grave;)">Squad Romeo</p><p onclick="squadDropdownClose(&grave;19&grave;, &grave;Squad Sierra&grave;)">Squad Sierra</p><p onclick="squadDropdownClose(&grave;20&grave;, &grave;Squad Tango&grave;)">Squad Tango</p><p onclick="squadDropdownClose(&grave;21&grave;, &grave;Squad Uniform&grave;)">Squad Uniform</p><p onclick="squadDropdownClose(&grave;22&grave;, &grave;Squad Victor&grave;)">Squad Victor</p><p onclick="squadDropdownClose(&grave;23&grave;, &grave;Squad Whiskey&grave;)">Squad Whiskey</p><p onclick="squadDropdownClose(&grave;24&grave;, &grave;Squad Xray&grave;)">Squad Xray</p><p onclick="squadDropdownClose(&grave;25&grave;, &grave;Squad Yankee&grave;)">Squad Yankee</p><p onclick="squadDropdownClose(&grave;26&grave;, &grave;Squad Zulu&grave;)">Squad Zulu</p><p onclick="squadDropdownClose(&grave;27&grave;, &grave;Squad Haggard&grave;)">Squad Haggard</p><p onclick="squadDropdownClose(&grave;28&grave;, &grave;Squad Sweetwater&grave;)">Squad Sweetwater</p><p onclick="squadDropdownClose(&grave;29&grave;, &grave;Squad Preston&grave;)">Squad Preston</p><p onclick="squadDropdownClose(&grave;30&grave;, &grave;Squad Redford&grave;)">Squad Redford</p><p onclick="squadDropdownClose(&grave;31&grave;, &grave;Squad Faith&grave;)">Squad Faith</p><p onclick="squadDropdownClose(&grave;32&grave;, &grave;Squad Celeste&grave;)">Squad Celeste</p></div></div>';
+    '<div class="dropdown"><input onclick="squadDropdownOpen()" id="squadIdInput" type="text" name="0" value="No Squad"></input><div class="dropDownButton" onclick="squadDropdownOpen()"></div><div id="squadNamesDropDown" class="dropdown-content"><p onclick="squadDropdownClose(&grave;0&grave;, &grave;No Squad&grave;)">No Squad</p><p onclick="squadDropdownClose(&grave;1&grave;, &grave;Squad Alpha&grave;)">Squad Alpha</p><p onclick="squadDropdownClose(&grave;2&grave;, &grave;Squad Bravo&grave;)">Squad Bravo</p><p onclick="squadDropdownClose(&grave;3&grave;, &grave;Squad Charlie&grave;)">Squad Charlie</p><p onclick="squadDropdownClose(&grave;4&grave;, &grave;Squad Delta&grave;)">Squad Delta</p><p onclick="squadDropdownClose(&grave;5&grave;, &grave;Squad Echo&grave;)">Squad Echo</p><p onclick="squadDropdownClose(&grave;6&grave;, &grave;Squad Foxtrot&grave;)">Squad Foxtrot</p><p onclick="squadDropdownClose(&grave;7&grave;, &grave;Squad Golf&grave;)">Squad Golf</p><p onclick="squadDropdownClose(&grave;8&grave;, &grave;Squad Hotel&grave;)">Squad Hotel</p><p onclick="squadDropdownClose(&grave;9&grave;, &grave;Squad India&grave;)">Squad India</p><p onclick="squadDropdownClose(&grave;10&grave;, &grave;Squad Juliet&grave;)">Squad Juliet</p><p onclick="squadDropdownClose(&grave;11&grave;, &grave;Squad Kilo&grave;)">Squad Kilo</p><p onclick="squadDropdownClose(&grave;12&grave;, &grave;Squad Lima&grave;)">Squad Lima</p><p onclick="squadDropdownClose(&grave;13&grave;, &grave;Squad Mike&grave;)">Squad Mike</p><p onclick="squadDropdownClose(&grave;14&grave;, &grave;Squad November&grave;)">Squad November</p><p onclick="squadDropdownClose(&grave;15&grave;, &grave;Squad Oscar&grave;)">Squad Oscar</p><p onclick="squadDropdownClose(&grave;16&grave;, &grave;Squad Papa&grave;)">Squad Papa</p><p onclick="squadDropdownClose(&grave;17&grave;, &grave;Squad Quebec&grave;)">Squad Quebec</p><p onclick="squadDropdownClose(&grave;18&grave;, &grave;Squad Romeo&grave;)">Squad Romeo</p><p onclick="squadDropdownClose(&grave;19&grave;, &grave;Squad Sierra&grave;)">Squad Sierra</p><p onclick="squadDropdownClose(&grave;20&grave;, &grave;Squad Tango&grave;)">Squad Tango</p><p onclick="squadDropdownClose(&grave;21&grave;, &grave;Squad Uniform&grave;)">Squad Uniform</p><p onclick="squadDropdownClose(&grave;22&grave;, &grave;Squad Victor&grave;)">Squad Victor</p><p onclick="squadDropdownClose(&grave;23&grave;, &grave;Squad Whiskey&grave;)">Squad Whiskey</p><p onclick="squadDropdownClose(&grave;24&grave;, &grave;Squad Xray&grave;)">Squad Xray</p><p onclick="squadDropdownClose(&grave;25&grave;, &grave;Squad Yankee&grave;)">Squad Yankee</p><p onclick="squadDropdownClose(&grave;26&grave;, &grave;Squad Zulu&grave;)">Squad Zulu</p><p onclick="squadDropdownClose(&grave;27&grave;, &grave;Squad Haggard&grave;)">Squad Haggard</p><p onclick="squadDropdownClose(&grave;28&grave;, &grave;Squad Sweetwater&grave;)">Squad Sweetwater</p><p onclick="squadDropdownClose(&grave;29&grave;, &grave;Squad Preston&grave;)">Squad Preston</p><p onclick="squadDropdownClose(&grave;30&grave;, &grave;Squad Redford&grave;)">Squad Redford</p><p onclick="squadDropdownClose(&grave;31&grave;, &grave;Squad Faith&grave;)">Squad Faith</p><p onclick="squadDropdownClose(&grave;32&grave;, &grave;Squad Celeste&grave;)">Squad Celeste</p></div></div>';
   document.getElementById("popupelements").innerHTML +=
-    '<div><input id="moveReason" type="textbox" placeholder="Reason: (Optional)"></input></div>';
+    '<div><input id="moveReason" type="text" placeholder="Reason: (Optional)"></input></div>';
   document.getElementById("popupelements").innerHTML +=
     '<div id="popupelement" onclick="moveNow(&grave;' +
     playerName +
@@ -1596,7 +1647,7 @@ function move(playerName) {
   }
 }
 function teamDropdownOpen() {
-  document.getElementById("teamNamesDropDown").style.display = "block";
+  document.getElementById("teamNamesDropDown").style.display = "flex";
 }
 function teamDropdownClose(teamId, teamName) {
   teamIdToSwitch = teamId;
@@ -1606,7 +1657,7 @@ function teamDropdownClose(teamId, teamName) {
   document.getElementById("teamNamesDropDown").style.display = "none";
 }
 function squadDropdownOpen() {
-  document.getElementById("squadNamesDropDown").style.display = "block";
+  document.getElementById("squadNamesDropDown").style.display = "flex";
 }
 function squadDropdownClose(squadId, squadName) {
   squadIdToSwitch = squadId;
@@ -1643,7 +1694,7 @@ function kill(playerName) {
   document.getElementById("popup").innerHTML +=
     '<div id="popupelements"></div>';
   document.getElementById("popupelements").innerHTML +=
-    '<div><input id="killReason" type="textbox" placeholder="Reason: (Optional)"></input></div>';
+    '<div><input id="killReason" type="text" placeholder="Reason: (Optional)"></input></div>';
   document.getElementById("popupelements").innerHTML +=
     '<div id="popupelement" onclick="killNow(&grave;' +
     playerName +
@@ -1675,7 +1726,7 @@ function kick(playerName) {
   document.getElementById("popup").innerHTML +=
     '<div id="popupelements"></div>';
   document.getElementById("popupelements").innerHTML +=
-    '<div><input id="kickReason" type="textbox" placeholder="Reason: (Optional)"></input></div>';
+    '<div><input id="kickReason" type="text" placeholder="Reason: (Optional)"></input></div>';
   document.getElementById("popupelements").innerHTML +=
     '<div id="popupelement" onclick="kickNow(&grave;' +
     playerName +
@@ -1696,6 +1747,10 @@ function kickNow(playerName) {
 }
 
 function tban(playerName) {
+  if (biaIsBot(playerName)) {
+    biaRefuseBot(playerName);
+    return;
+  }
   let playerNameInline = playerName;
   playerName = escapestring(playerName, true);
 
@@ -1708,9 +1763,9 @@ function tban(playerName) {
   document.getElementById("popup").innerHTML +=
     '<div id="popupelements"></div>';
   document.getElementById("popupelements").innerHTML +=
-    '<div><input id="tbanDuration" type="textbox" placeholder="Time: (in minutes)"></input></div>';
+    '<div><input id="tbanDuration" type="text" placeholder="Time: (in minutes)"></input></div>';
   document.getElementById("popupelements").innerHTML +=
-    '<div><input id="tbanReason" type="textbox" placeholder="Reason: (Optional)"></input></div>';
+    '<div><input id="tbanReason" type="text" placeholder="Reason: (Optional)"></input></div>';
   document.getElementById("popupelements").innerHTML +=
     '<div id="popupelement" onclick="tbanNow(&grave;' +
     playerName +
@@ -1734,6 +1789,10 @@ function tbanNow(playerName) {
   closepopup();
 }
 function ban(playerName) {
+  if (biaIsBot(playerName)) {
+    biaRefuseBot(playerName);
+    return;
+  }
   let playerNameInline = playerName;
   playerName = escapestring(playerName, true);
 
@@ -1746,7 +1805,7 @@ function ban(playerName) {
   document.getElementById("popup").innerHTML +=
     '<div id="popupelements"></div>';
   document.getElementById("popupelements").innerHTML +=
-    '<div><input id="banReason" type="textbox" placeholder="Reason: (Optional)"></input></div>';
+    '<div><input id="banReason" type="text" placeholder="Reason: (Optional)"></input></div>';
   document.getElementById("popupelements").innerHTML +=
     '<div id="popupelement" onclick="banNow(&grave;' +
     playerName +
@@ -1853,94 +1912,94 @@ function getAdminRightsOfPlayerDone(abilities) {
   }
   if (playerCanMovePlayers == false) {
     document.getElementById("checkBoxSwitches").innerHTML +=
-      '<input type="checkbox" name="editRightsInput" value="canMovePlayers" id="pCanMove"><label for="pCanMove">Can Move</label>';
+      '<div class="biaCheck" data-name="editRightsInput" data-value="canMovePlayers" id="pCanMove" onclick="toggleBiaCheck(this)"><div class="biaCheckTrack"><div class="biaCheckKnob"></div></div><div class="biaCheckLabel">Can Move</div></div>';
   } else {
     document.getElementById("checkBoxSwitches").innerHTML +=
-      '<input type="checkbox" name="editRightsInput" value="canMovePlayers" id="pCanMove" checked><label for="pCanMove">Can Move</label>';
+      '<div class="biaCheck checked" data-name="editRightsInput" data-value="canMovePlayers" id="pCanMove" onclick="toggleBiaCheck(this)"><div class="biaCheckTrack"><div class="biaCheckKnob"></div></div><div class="biaCheckLabel">Can Move</div></div>';
   }
   if (playerCanKillPlayers == false) {
     document.getElementById("checkBoxSwitches").innerHTML +=
-      '<input type="checkbox" name="editRightsInput" value="canKillPlayers" id="pCanKill"><label for="pCanKill">Can Kill</label>';
+      '<div class="biaCheck" data-name="editRightsInput" data-value="canKillPlayers" id="pCanKill" onclick="toggleBiaCheck(this)"><div class="biaCheckTrack"><div class="biaCheckKnob"></div></div><div class="biaCheckLabel">Can Kill</div></div>';
   } else {
     document.getElementById("checkBoxSwitches").innerHTML +=
-      '<input type="checkbox" name="editRightsInput" value="canKillPlayers" id="pCanKill" checked><label for="pCanKill">Can Kill</label>';
+      '<div class="biaCheck checked" data-name="editRightsInput" data-value="canKillPlayers" id="pCanKill" onclick="toggleBiaCheck(this)"><div class="biaCheckTrack"><div class="biaCheckKnob"></div></div><div class="biaCheckLabel">Can Kill</div></div>';
   }
   if (playerCanKickPlayers == false) {
     document.getElementById("checkBoxSwitches").innerHTML +=
-      '<input type="checkbox" name="editRightsInput" value="canKickPlayers" id="pCanKick"><label for="pCanKick">Can Kick</label>';
+      '<div class="biaCheck" data-name="editRightsInput" data-value="canKickPlayers" id="pCanKick" onclick="toggleBiaCheck(this)"><div class="biaCheckTrack"><div class="biaCheckKnob"></div></div><div class="biaCheckLabel">Can Kick</div></div>';
   } else {
     document.getElementById("checkBoxSwitches").innerHTML +=
-      '<input type="checkbox" name="editRightsInput" value="canKickPlayers" id="pCanKick" checked><label for="pCanKick">Can Kick</label>';
+      '<div class="biaCheck checked" data-name="editRightsInput" data-value="canKickPlayers" id="pCanKick" onclick="toggleBiaCheck(this)"><div class="biaCheckTrack"><div class="biaCheckKnob"></div></div><div class="biaCheckLabel">Can Kick</div></div>';
   }
   if (playerCanTemporaryBanPlayers == false) {
     document.getElementById("checkBoxSwitches").innerHTML +=
-      '<input type="checkbox" name="editRightsInput" value="canTemporaryBanPlayers" id="pCanTban"><label for="pCanTban">Can Tban</label>';
+      '<div class="biaCheck" data-name="editRightsInput" data-value="canTemporaryBanPlayers" id="pCanTban" onclick="toggleBiaCheck(this)"><div class="biaCheckTrack"><div class="biaCheckKnob"></div></div><div class="biaCheckLabel">Can Tban</div></div>';
   } else {
     document.getElementById("checkBoxSwitches").innerHTML +=
-      '<input type="checkbox" name="editRightsInput" value="canTemporaryBanPlayers" id="pCanTban" checked><label for="pCanTban">Can Tban</label>';
+      '<div class="biaCheck checked" data-name="editRightsInput" data-value="canTemporaryBanPlayers" id="pCanTban" onclick="toggleBiaCheck(this)"><div class="biaCheckTrack"><div class="biaCheckKnob"></div></div><div class="biaCheckLabel">Can Tban</div></div>';
   }
   if (playerCanPermanentlyBanPlayers == false) {
     document.getElementById("checkBoxSwitches").innerHTML +=
-      '<input type="checkbox" name="editRightsInput" value="canPermanentlyBanPlayers" id="pCanBan"><label for="pCanBan">Can Ban</label>';
+      '<div class="biaCheck" data-name="editRightsInput" data-value="canPermanentlyBanPlayers" id="pCanBan" onclick="toggleBiaCheck(this)"><div class="biaCheckTrack"><div class="biaCheckKnob"></div></div><div class="biaCheckLabel">Can Ban</div></div>';
   } else {
     document.getElementById("checkBoxSwitches").innerHTML +=
-      '<input type="checkbox" name="editRightsInput" value="canPermanentlyBanPlayers" id="pCanBan" checked><label for="pCanBan">Can Ban</label>';
+      '<div class="biaCheck checked" data-name="editRightsInput" data-value="canPermanentlyBanPlayers" id="pCanBan" onclick="toggleBiaCheck(this)"><div class="biaCheckTrack"><div class="biaCheckKnob"></div></div><div class="biaCheckLabel">Can Ban</div></div>';
   }
   if (playerCanEditGameAdminList == false) {
     document.getElementById("checkBoxSwitches").innerHTML +=
-      '<input type="checkbox" name="editRightsInput" value="canEditGameAdminList" id="pCanEdit"><label for="pCanEdit">Can Edit Rights</label>';
+      '<div class="biaCheck" data-name="editRightsInput" data-value="canEditGameAdminList" id="pCanEdit" onclick="toggleBiaCheck(this)"><div class="biaCheckTrack"><div class="biaCheckKnob"></div></div><div class="biaCheckLabel">Can Edit Rights</div></div>';
   } else {
     document.getElementById("checkBoxSwitches").innerHTML +=
-      '<input type="checkbox" name="editRightsInput" value="canEditGameAdminList" id="pCanEdit" checked><label for="pCanEdit">Can Edit Rights</label>';
+      '<div class="biaCheck checked" data-name="editRightsInput" data-value="canEditGameAdminList" id="pCanEdit" onclick="toggleBiaCheck(this)"><div class="biaCheckTrack"><div class="biaCheckKnob"></div></div><div class="biaCheckLabel">Can Edit Rights</div></div>';
   }
   if (playerCanEditBanList == false) {
     document.getElementById("checkBoxSwitches").innerHTML +=
-      '<input type="checkbox" name="editRightsInput" value="canEditBanList" id="pCanEditBanList"><label for="pCanEditBanList">Can Edit Ban List</label>';
+      '<div class="biaCheck" data-name="editRightsInput" data-value="canEditBanList" id="pCanEditBanList" onclick="toggleBiaCheck(this)"><div class="biaCheckTrack"><div class="biaCheckKnob"></div></div><div class="biaCheckLabel">Can Edit Ban List</div></div>';
   } else {
     document.getElementById("checkBoxSwitches").innerHTML +=
-      '<input type="checkbox" name="editRightsInput" value="canEditBanList" id="pCanEditBanList" checked><label for="pCanEditBanList">Can Edit Ban List</label>';
+      '<div class="biaCheck checked" data-name="editRightsInput" data-value="canEditBanList" id="pCanEditBanList" onclick="toggleBiaCheck(this)"><div class="biaCheckTrack"><div class="biaCheckKnob"></div></div><div class="biaCheckLabel">Can Edit Ban List</div></div>';
   }
   if (playerCanEditMapList == false) {
     document.getElementById("checkBoxSwitches").innerHTML +=
-      '<input type="checkbox" name="editRightsInput" value="canEditMapList" id="pCanEditMapList"><label for="pCanEditMapList">Can Edit Map List</label>';
+      '<div class="biaCheck" data-name="editRightsInput" data-value="canEditMapList" id="pCanEditMapList" onclick="toggleBiaCheck(this)"><div class="biaCheckTrack"><div class="biaCheckKnob"></div></div><div class="biaCheckLabel">Can Edit Map List</div></div>';
   } else {
     document.getElementById("checkBoxSwitches").innerHTML +=
-      '<input type="checkbox" name="editRightsInput" value="canEditMapList" id="pCanEditMapList" checked><label for="pCanEditMapList">Can Edit Map List</label>';
+      '<div class="biaCheck checked" data-name="editRightsInput" data-value="canEditMapList" id="pCanEditMapList" onclick="toggleBiaCheck(this)"><div class="biaCheckTrack"><div class="biaCheckKnob"></div></div><div class="biaCheckLabel">Can Edit Map List</div></div>';
   }
   if (playerCanUseMapFunctions == false) {
     document.getElementById("checkBoxSwitches").innerHTML +=
-      '<input type="checkbox" name="editRightsInput" value="canUseMapFunctions" id="pCanUseMapFunctions"><label for="pCanUseMapFunctions">Can Use Map Functions</label>';
+      '<div class="biaCheck" data-name="editRightsInput" data-value="canUseMapFunctions" id="pCanUseMapFunctions" onclick="toggleBiaCheck(this)"><div class="biaCheckTrack"><div class="biaCheckKnob"></div></div><div class="biaCheckLabel">Can Use Map Functions</div></div>';
   } else {
     document.getElementById("checkBoxSwitches").innerHTML +=
-      '<input type="checkbox" name="editRightsInput" value="canUseMapFunctions" id="pCanUseMapFunctions" checked><label for="pCanUseMapFunctions">Can Use Map Functions</label>';
+      '<div class="biaCheck checked" data-name="editRightsInput" data-value="canUseMapFunctions" id="pCanUseMapFunctions" onclick="toggleBiaCheck(this)"><div class="biaCheckTrack"><div class="biaCheckKnob"></div></div><div class="biaCheckLabel">Can Use Map Functions</div></div>';
   }
   if (playerCanAlterServerSettings == false) {
     document.getElementById("checkBoxSwitches").innerHTML +=
-      '<input type="checkbox" name="editRightsInput" value="canAlterServerSettings" id="pCanAlterServerSettings"><label for="pCanAlterServerSettings">Can Alter Server Settings</label>';
+      '<div class="biaCheck" data-name="editRightsInput" data-value="canAlterServerSettings" id="pCanAlterServerSettings" onclick="toggleBiaCheck(this)"><div class="biaCheckTrack"><div class="biaCheckKnob"></div></div><div class="biaCheckLabel">Can Alter Server Settings</div></div>';
   } else {
     document.getElementById("checkBoxSwitches").innerHTML +=
-      '<input type="checkbox" name="editRightsInput" value="canAlterServerSettings" id="pCanAlterServerSettings" checked><label for="pCanAlterServerSettings">Can Alter Server Settings</label>';
+      '<div class="biaCheck checked" data-name="editRightsInput" data-value="canAlterServerSettings" id="pCanAlterServerSettings" onclick="toggleBiaCheck(this)"><div class="biaCheckTrack"><div class="biaCheckKnob"></div></div><div class="biaCheckLabel">Can Alter Server Settings</div></div>';
   }
   if (playerCanEditReservedSlotsList == false) {
     document.getElementById("checkBoxSwitches").innerHTML +=
-      '<input type="checkbox" name="editRightsInput" value="canEditReservedSlotsList" id="pCanEditReservedSlotsList"><label for="pCanEditReservedSlotsList">Can Edit Reserved Slot List</label>';
+      '<div class="biaCheck" data-name="editRightsInput" data-value="canEditReservedSlotsList" id="pCanEditReservedSlotsList" onclick="toggleBiaCheck(this)"><div class="biaCheckTrack"><div class="biaCheckKnob"></div></div><div class="biaCheckLabel">Can Edit Reserved Slot List</div></div>';
   } else {
     document.getElementById("checkBoxSwitches").innerHTML +=
-      '<input type="checkbox" name="editRightsInput" value="canEditReservedSlotsList" id="pCanEditReservedSlotsList" checked><label for="pCanEditReservedSlotsList">Can Edit Reserved Slot List</label>';
+      '<div class="biaCheck checked" data-name="editRightsInput" data-value="canEditReservedSlotsList" id="pCanEditReservedSlotsList" onclick="toggleBiaCheck(this)"><div class="biaCheckTrack"><div class="biaCheckKnob"></div></div><div class="biaCheckLabel">Can Edit Reserved Slot List</div></div>';
   }
   if (playerCanEditTextChatModerationList == false) {
     document.getElementById("checkBoxSwitches").innerHTML +=
-      '<input type="checkbox" name="editRightsInput" value="canEditTextChatModerationList" id="pCanEditTextChatModerationList"><label for="pCanEditTextChatModerationList">Can Edit Text Chat Moderation List</label>';
+      '<div class="biaCheck" data-name="editRightsInput" data-value="canEditTextChatModerationList" id="pCanEditTextChatModerationList" onclick="toggleBiaCheck(this)"><div class="biaCheckTrack"><div class="biaCheckKnob"></div></div><div class="biaCheckLabel">Can Edit Text Chat Moderation List</div></div>';
   } else {
     document.getElementById("checkBoxSwitches").innerHTML +=
-      '<input type="checkbox" name="editRightsInput" value="canEditTextChatModerationList" id="pCanEditTextChatModerationList" checked><label for="pCanEditTextChatModerationList">Can Edit Text Chat Moderation List</label>';
+      '<div class="biaCheck checked" data-name="editRightsInput" data-value="canEditTextChatModerationList" id="pCanEditTextChatModerationList" onclick="toggleBiaCheck(this)"><div class="biaCheckTrack"><div class="biaCheckKnob"></div></div><div class="biaCheckLabel">Can Edit Text Chat Moderation List</div></div>';
   }
   if (playerCanShutdownServer == false) {
     document.getElementById("checkBoxSwitches").innerHTML +=
-      '<input type="checkbox" name="editRightsInput" value="canShutdownServer" id="pCanShutdownServer"><label for="pCanShutdownServer">Can Shutdown Server</label>';
+      '<div class="biaCheck" data-name="editRightsInput" data-value="canShutdownServer" id="pCanShutdownServer" onclick="toggleBiaCheck(this)"><div class="biaCheckTrack"><div class="biaCheckKnob"></div></div><div class="biaCheckLabel">Can Shutdown Server</div></div>';
   } else {
     document.getElementById("checkBoxSwitches").innerHTML +=
-      '<input type="checkbox" name="editRightsInput" value="canShutdownServer" id="pCanShutdownServer" checked><label for="pCanShutdownServer">Can Shutdown Server</label>';
+      '<div class="biaCheck checked" data-name="editRightsInput" data-value="canShutdownServer" id="pCanShutdownServer" onclick="toggleBiaCheck(this)"><div class="biaCheckTrack"><div class="biaCheckKnob"></div></div><div class="biaCheckLabel">Can Shutdown Server</div></div>';
   }
 
   if (
@@ -1997,11 +2056,11 @@ function deleteAndSaveAdminRights(playerName) {
 }
 
 function applyAdminRights(playerName) {
-  const checkboxes = document.querySelectorAll('input[name="editRightsInput"]');
+  const checkboxes = document.querySelectorAll('.biaCheck[data-name="editRightsInput"]');
   const num = checkboxes.length;
   const args = [playerName];
   for (let i = 0; i < num; i++) {
-    if (checkboxes[i].checked === true) {
+    if (checkboxes[i].classList.contains("checked")) {
       args.push("true");
     } else {
       args.push("false");
@@ -2012,11 +2071,11 @@ function applyAdminRights(playerName) {
 }
 
 function saveAdminRights(playerName) {
-  const checkboxes = document.querySelectorAll('input[name="editRightsInput"]');
+  const checkboxes = document.querySelectorAll('.biaCheck[data-name="editRightsInput"]');
   const num = checkboxes.length;
   const args = [playerName];
   for (let i = 0; i < num; i++) {
-    if (checkboxes[i].checked === true) {
+    if (checkboxes[i].classList.contains("checked")) {
       args.push("true");
     } else {
       args.push("false");
@@ -2144,9 +2203,9 @@ function updateScoreboardHeader(scoreboardHeader) {
   place1 = 0;
   place2 = 0;
   document.getElementById("table1").innerHTML =
-    '<tbody id="table1tbody"><tr id="firstrow"><th id="team1">US</th><th id="tickets1"></th><th id="killsHeader1">K</th><th id="deathsHeader1">D</th><th id="scoreHeader1">SCORE</th><th id="pingHeader1">PING</th></tr></tbody>';
+    '<div class="sbBody" id="table1tbody"><div class="sbRow" id="firstrow"><div class="sbCell" id="team1">RU</div><div class="sbCell" id="tickets1"></div><div class="sbCell" id="killsHeader1">K</div><div class="sbCell" id="deathsHeader1">D</div><div class="sbCell" id="scoreHeader1">SCORE</div><div class="sbCell" id="pingHeader1">PING</div></div></div>';
   document.getElementById("table2").innerHTML =
-    '<tbody id="table2tbody"><tr id="firstrow"><th id="team2">RU</th><th id="tickets2"></th><th id="killsHeader2">K</th><th id="deathsHeader2">D</th><th id="scoreHeader2">SCORE</th><th id="pingHeader2">PING</th></tr></tbody>';
+    '<div class="sbBody" id="table2tbody"><div class="sbRow" id="firstrow"><div class="sbCell" id="team2">US</div><div class="sbCell" id="tickets2"></div><div class="sbCell" id="killsHeader2">K</div><div class="sbCell" id="deathsHeader2">D</div><div class="sbCell" id="scoreHeader2">SCORE</div><div class="sbCell" id="pingHeader2">PING</div></div></div>';
 
   document.getElementById("team1").innerHTML = scoreboardHeader[0];
   document.getElementById("tickets1").innerHTML = scoreboardHeader[1];
@@ -2166,12 +2225,12 @@ function updateScoreboardHeader(scoreboardHeader) {
 function updateScoreboardHeader2(scoreboardHeader) {
   place3 = 0;
   place4 = 0;
-  document.getElementById("table3").style.display = "inline";
-  document.getElementById("table4").style.display = "inline";
+  document.getElementById("table3").style.display = "flex";
+  document.getElementById("table4").style.display = "flex";
   document.getElementById("table3").innerHTML =
-    '<tbody id="table3tbody"><tr id="firstrow"><th id="team3">US</th><th id="tickets3"></th><th id="killsHeader3">K</th><th id="deathsHeader3">D</th><th id="scoreHeader3">SCORE</th><th id="pingHeader3">PING</th></tr></tbody>';
+    '<div class="sbBody" id="table3tbody"><div class="sbRow" id="firstrow"><div class="sbCell" id="team3">RU</div><div class="sbCell" id="tickets3"></div><div class="sbCell" id="killsHeader3">K</div><div class="sbCell" id="deathsHeader3">D</div><div class="sbCell" id="scoreHeader3">SCORE</div><div class="sbCell" id="pingHeader3">PING</div></div></div>';
   document.getElementById("table4").innerHTML =
-    '<tbody id="table4tbody"><tr id="firstrow"><th id="team4">RU</th><th id="tickets4"></th><th id="killsHeader4">K</th><th id="deathsHeader4">D</th><th id="scoreHeader4">SCORE</th><th id="pingHeader4">PING</th></tr></tbody>';
+    '<div class="sbBody" id="table4tbody"><div class="sbRow" id="firstrow"><div class="sbCell" id="team4">US</div><div class="sbCell" id="tickets4"></div><div class="sbCell" id="killsHeader4">K</div><div class="sbCell" id="deathsHeader4">D</div><div class="sbCell" id="scoreHeader4">SCORE</div><div class="sbCell" id="pingHeader4">PING</div></div></div>';
 
   document.getElementById("team3").innerHTML = scoreboardHeader[0];
   document.getElementById("tickets3").innerHTML = scoreboardHeader[1];
@@ -2195,109 +2254,109 @@ function updateScoreboardBody1(sendThis1) {
       "<p>Ping: <span>" + localPing + " ms</span></p>";
     if (sendThis1[6] == true) {
       document.getElementById("table1tbody").innerHTML +=
-        '<tr onmousedown="action(&grave;' +
+        '<div onmousedown="action(&grave;' +
         playerNameArg +
         "&grave;, " +
         sendThis1[5] +
         ", " +
         sendThis1[9] +
-        ')" id="localPlayerScoreboard" class="' +
+        ')" id="localPlayerScoreboard" class="sbRow ' +
         sendThis1[7] +
-        '"><td id="place1">' +
+        '"><div class="sbCell" id="place1">' +
         place1 +
-        '</td><td id="name1">' +
+        '</div><div class="sbCell" id="name1">' +
         sendThis1[1] +
-        '</td><td id="kills1">' +
+        '</div><div class="sbCell" id="kills1">' +
         sendThis1[2] +
-        '</td><td id="deaths1">' +
+        '</div><div class="sbCell" id="deaths1">' +
         sendThis1[3] +
-        '</td><td id="points1">' +
+        '</div><div class="sbCell" id="points1">' +
         sendThis1[4] +
-        '</td><td id="ping1">' +
+        '</div><div class="sbCell" id="ping1">' +
         sendThis1[8] +
-        "</td></tr>";
+        "</div></div>";
     } else {
       document.getElementById("table1tbody").innerHTML +=
-        '<tr onmousedown="action(&grave;' +
+        '<div onmousedown="action(&grave;' +
         playerNameArg +
         "&grave;, " +
         sendThis1[5] +
         ", " +
         sendThis1[9] +
-        ')" id="localPlayerScoreboard" class="' +
+        ')" id="localPlayerScoreboard" class="sbRow ' +
         sendThis1[7] +
-        ' isDead"><td id="place1">' +
+        ' isDead"><div class="sbCell" id="place1">' +
         place1 +
-        '</td><td id="name1">' +
+        '</div><div class="sbCell" id="name1">' +
         sendThis1[1] +
-        '</td><td id="kills1">' +
+        '</div><div class="sbCell" id="kills1">' +
         sendThis1[2] +
-        '</td><td id="deaths1">' +
+        '</div><div class="sbCell" id="deaths1">' +
         sendThis1[3] +
-        '</td><td id="points1">' +
+        '</div><div class="sbCell" id="points1">' +
         sendThis1[4] +
-        '</td><td id="ping1">' +
+        '</div><div class="sbCell" id="ping1">' +
         sendThis1[8] +
-        "</td></tr>";
+        "</div></div>";
     }
   } else if (localPlayerSquad == sendThis1[5] && localPlayerSquad != 0) {
     if (sendThis1[6] == true) {
       document.getElementById("table1tbody").innerHTML +=
-        '<tr onmousedown="action(&grave;' +
+        '<div onmousedown="action(&grave;' +
         playerNameArg +
         "&grave;, " +
         sendThis1[5] +
         ", " +
         sendThis1[9] +
-        ')" id="squadMates" class="' +
+        ')" id="squadMates" class="sbRow ' +
         sendThis1[7] +
-        '"><td id="place1">' +
+        '"><div class="sbCell" id="place1">' +
         place1 +
-        '</td><td id="name1">' +
+        '</div><div class="sbCell" id="name1">' +
         sendThis1[1] +
-        '</td><td id="kills1">' +
+        '</div><div class="sbCell" id="kills1">' +
         sendThis1[2] +
-        '</td><td id="deaths1">' +
+        '</div><div class="sbCell" id="deaths1">' +
         sendThis1[3] +
-        '</td><td id="points1">' +
+        '</div><div class="sbCell" id="points1">' +
         sendThis1[4] +
-        '</td><td id="ping1">' +
+        '</div><div class="sbCell" id="ping1">' +
         sendThis1[8] +
-        "</td></tr>";
+        "</div></div>";
     } else {
       document.getElementById("table1tbody").innerHTML +=
-        '<tr onmousedown="action(&grave;' +
+        '<div onmousedown="action(&grave;' +
         playerNameArg +
         "&grave;, " +
         sendThis1[5] +
         ", " +
         sendThis1[9] +
-        ')" id="squadMates" class="' +
+        ')" id="squadMates" class="sbRow ' +
         sendThis1[7] +
-        ' isDead"><td id="place1">' +
+        ' isDead"><div class="sbCell" id="place1">' +
         place1 +
-        '</td><td id="name1">' +
+        '</div><div class="sbCell" id="name1">' +
         sendThis1[1] +
-        '</td><td id="kills1">' +
+        '</div><div class="sbCell" id="kills1">' +
         sendThis1[2] +
-        '</td><td id="deaths1">' +
+        '</div><div class="sbCell" id="deaths1">' +
         sendThis1[3] +
-        '</td><td id="points1">' +
+        '</div><div class="sbCell" id="points1">' +
         sendThis1[4] +
-        '</td><td id="ping1">' +
+        '</div><div class="sbCell" id="ping1">' +
         sendThis1[8] +
-        "</td></tr>";
+        "</div></div>";
     }
   } else {
     if (sendThis1[6] == true) {
       document.getElementById("table1tbody").innerHTML +=
-        '<tr onmousedown="action(&grave;' +
+        '<div onmousedown="action(&grave;' +
         playerNameArg +
         "&grave;, " +
         sendThis1[5] +
         ", " +
         sendThis1[9] +
-        ')" class="squad' +
+        ')" class="sbRow squad' +
         sendThis1[5] +
         " " +
         sendThis1[7] +
@@ -2305,28 +2364,28 @@ function updateScoreboardBody1(sendThis1) {
         sendThis1[5] +
         '&grave;)" onmouseout="hideWholeSquad(&grave;squad' +
         sendThis1[5] +
-        '&grave;)"><td id="place1">' +
+        '&grave;)"><div class="sbCell" id="place1">' +
         place1 +
-        '</td><td id="name1">' +
+        '</div><div class="sbCell" id="name1">' +
         sendThis1[1] +
-        '</td><td id="kills1">' +
+        '</div><div class="sbCell" id="kills1">' +
         sendThis1[2] +
-        '</td><td id="deaths1">' +
+        '</div><div class="sbCell" id="deaths1">' +
         sendThis1[3] +
-        '</td><td id="points1">' +
+        '</div><div class="sbCell" id="points1">' +
         sendThis1[4] +
-        '</td><td id="ping1">' +
+        '</div><div class="sbCell" id="ping1">' +
         sendThis1[8] +
-        "</td></tr>";
+        "</div></div>";
     } else {
       document.getElementById("table1tbody").innerHTML +=
-        '<tr onmousedown="action(&grave;' +
+        '<div onmousedown="action(&grave;' +
         playerNameArg +
         "&grave;, " +
         sendThis1[5] +
         ", " +
         sendThis1[9] +
-        ')" class="squad' +
+        ')" class="sbRow squad' +
         sendThis1[5] +
         " " +
         sendThis1[7] +
@@ -2334,19 +2393,19 @@ function updateScoreboardBody1(sendThis1) {
         sendThis1[5] +
         '&grave;)" onmouseout="hideWholeSquad(&grave;squad' +
         sendThis1[5] +
-        '&grave;)"><td id="place1">' +
+        '&grave;)"><div class="sbCell" id="place1">' +
         place1 +
-        '</td><td id="name1">' +
+        '</div><div class="sbCell" id="name1">' +
         sendThis1[1] +
-        '</td><td id="kills1">' +
+        '</div><div class="sbCell" id="kills1">' +
         sendThis1[2] +
-        '</td><td id="deaths1">' +
+        '</div><div class="sbCell" id="deaths1">' +
         sendThis1[3] +
-        '</td><td id="points1">' +
+        '</div><div class="sbCell" id="points1">' +
         sendThis1[4] +
-        '</td><td id="ping1">' +
+        '</div><div class="sbCell" id="ping1">' +
         sendThis1[8] +
-        "</td></tr>";
+        "</div></div>";
     }
   }
 }
@@ -2355,67 +2414,84 @@ function updateScoreboardBody2(sendThis2) {
   sendThis2[1] = escapestring(sendThis2[1], false);
 
   place2 += 1;
+  // sendThis2[5] = Alive status, sendThis2[7] = Kit Class string (e.g., 'ID_M_ASSAULT')
   if (sendThis2[5] == true) {
     document.getElementById("table2tbody").innerHTML +=
-      '<tr onmousedown="action(&grave;' +
+      '<div onmousedown="action(&grave;' +
       playerNameArg +
       "&grave;, " +
       0 +
       ", " +
       true +
-      ')"><td id="place2">' +
+      ')" class="sbRow esquad' +
+      sendThis2[8] +
+      " " +
+      sendThis2[7] +
+      '" onmouseover="showWholeSquad(&grave;esquad' +
+      sendThis2[8] +
+      '&grave;)" onmouseout="hideWholeSquad(&grave;esquad' +
+      sendThis2[8] +
+      '&grave;)"><div class="sbCell" id="place2">' +
       place2 +
-      '</td><td id="name2">' +
+      '</div><div class="sbCell" id="name2">' +
       sendThis2[1] +
-      '</td><td id="kills2">' +
+      '</div><div class="sbCell" id="kills2">' +
       sendThis2[2] +
-      '</td><td id="deaths2">' +
+      '</div><div class="sbCell" id="deaths2">' +
       sendThis2[3] +
-      '</td><td id="points2">' +
+      '</div><div class="sbCell" id="points2">' +
       sendThis2[4] +
-      '</td><td id="ping2">' +
+      '</div><div class="sbCell" id="ping2">' +
       sendThis2[6] +
-      "</td></tr>";
+      "</div></div>";
   } else {
     document.getElementById("table2tbody").innerHTML +=
-      '<tr onmousedown="action(&grave;' +
+      '<div onmousedown="action(&grave;' +
       playerNameArg +
       "&grave;, " +
       0 +
       ", " +
       true +
-      ')" class="isDead"><td id="place2">' +
+      ')" class="sbRow esquad' +
+      sendThis2[8] +
+      " " +
+      sendThis2[7] +
+      ' isDead" onmouseover="showWholeSquad(&grave;esquad' +
+      sendThis2[8] +
+      '&grave;)" onmouseout="hideWholeSquad(&grave;esquad' +
+      sendThis2[8] +
+      '&grave;)"><div class="sbCell" id="place2">' +
       place2 +
-      '</td><td id="name2">' +
+      '</div><div class="sbCell" id="name2">' +
       sendThis2[1] +
-      '</td><td id="kills2">' +
+      '</div><div class="sbCell" id="kills2">' +
       sendThis2[2] +
-      '</td><td id="deaths2">' +
+      '</div><div class="sbCell" id="deaths2">' +
       sendThis2[3] +
-      '</td><td id="points2">' +
+      '</div><div class="sbCell" id="points2">' +
       sendThis2[4] +
-      '</td><td id="ping2">' +
+      '</div><div class="sbCell" id="ping2">' +
       sendThis2[6] +
-      "</td></tr>";
+      "</div></div>";
   }
 }
 function updateScoreboardBody3(size) {
   while (size > place1) {
     document.getElementById("table1tbody").innerHTML +=
-      '<tr id="empty"><td id="place1"></td><td id="name1"></td><td id="kills1"></td><td id="deaths1"></td><td id="points1"></td><td id="ping1"></td></tr>';
+      '<div id="empty" class="sbRow"><div class="sbCell" id="place1"></div><div class="sbCell" id="name1"></div><div class="sbCell" id="kills1"></div><div class="sbCell" id="deaths1"></div><div class="sbCell" id="points1"></div><div class="sbCell" id="ping1"></div></div>';
     place1 += 1;
   }
   while (size > place2) {
     document.getElementById("table2tbody").innerHTML +=
-      '<tr id="empty"><td id="place2"></td><td id="name2"></td><td id="kills2"></td><td id="deaths2"></td><td id="points2"></td><td id="ping2"></td></tr>';
+      '<div id="empty" class="sbRow"><div class="sbCell" id="place2"></div><div class="sbCell" id="name2"></div><div class="sbCell" id="kills2"></div><div class="sbCell" id="deaths2"></div><div class="sbCell" id="points2"></div><div class="sbCell" id="ping2"></div></div>';
     place2 += 1;
   }
-  document.getElementById("scoreboard").style.display = "inline";
-  document.getElementById("tables").style.display = "inline";
+  document.getElementById("scoreboard").style.display = "flex";
+  document.getElementById("tables").style.display = "flex";
   document.getElementById("table1").style.height = null;
   document.getElementById("table2").style.height = null;
-  document.getElementById("table1").style.display = "inline";
-  document.getElementById("table2").style.display = "inline";
+  document.getElementById("table1").style.display = "flex";
+  document.getElementById("table2").style.display = "flex";
 }
 function updateScoreboardBody4(sendThis3) {
   let playerNameArg = escapestring(sendThis3[1], true);
@@ -2424,42 +2500,42 @@ function updateScoreboardBody4(sendThis3) {
   place3 += 1;
   if (sendThis3[5] == true) {
     document.getElementById("table3tbody").innerHTML +=
-      '<tr onmousedown="action(&grave;' +
+      '<div onmousedown="action(&grave;' +
       playerNameArg +
       "&grave;, " +
       0 +
-      ')"><td id="place3">' +
+      ')"><div class="sbCell" id="place3">' +
       place3 +
-      '</td><td id="name3">' +
+      '</div><div class="sbCell" id="name3">' +
       sendThis3[1] +
-      '</td><td id="kills3">' +
+      '</div><div class="sbCell" id="kills3">' +
       sendThis3[2] +
-      '</td><td id="deaths3">' +
+      '</div><div class="sbCell" id="deaths3">' +
       sendThis3[3] +
-      '</td><td id="points3">' +
+      '</div><div class="sbCell" id="points3">' +
       sendThis3[4] +
-      '</td><td id="ping3">' +
+      '</div><div class="sbCell" id="ping3">' +
       sendThis3[6] +
-      "</td></tr>";
+      "</div></div>";
   } else {
     document.getElementById("table3tbody").innerHTML +=
-      '<tr onmousedown="action(&grave;' +
+      '<div onmousedown="action(&grave;' +
       playerNameArg +
       "&grave;, " +
       0 +
-      ')" class="isDead"><td id="place3">' +
+      ')" class="isDead"><div class="sbCell" id="place3">' +
       place3 +
-      '</td><td id="name3">' +
+      '</div><div class="sbCell" id="name3">' +
       sendThis3[1] +
-      '</td><td id="kills3">' +
+      '</div><div class="sbCell" id="kills3">' +
       sendThis3[2] +
-      '</td><td id="deaths3">' +
+      '</div><div class="sbCell" id="deaths3">' +
       sendThis3[3] +
-      '</td><td id="points3">' +
+      '</div><div class="sbCell" id="points3">' +
       sendThis3[4] +
-      '</td><td id="ping3">' +
+      '</div><div class="sbCell" id="ping3">' +
       sendThis3[6] +
-      "</td></tr>";
+      "</div></div>";
   }
 }
 function updateScoreboardBody5(sendThis4) {
@@ -2469,53 +2545,53 @@ function updateScoreboardBody5(sendThis4) {
   place4 += 1;
   if (sendThis4[5] == true) {
     document.getElementById("table4tbody").innerHTML +=
-      '<tr onmousedown="action(&grave;' +
+      '<div onmousedown="action(&grave;' +
       playerNameArg +
       "&grave;, " +
       0 +
-      ')"><td id="place4">' +
+      ')"><div class="sbCell" id="place4">' +
       place4 +
-      '</td><td id="name4">' +
+      '</div><div class="sbCell" id="name4">' +
       sendThis4[1] +
-      '</td><td id="kills4">' +
+      '</div><div class="sbCell" id="kills4">' +
       sendThis4[2] +
-      '</td><td id="deaths4">' +
+      '</div><div class="sbCell" id="deaths4">' +
       sendThis4[3] +
-      '</td><td id="points4">' +
+      '</div><div class="sbCell" id="points4">' +
       sendThis4[4] +
-      '</td><td id="ping4">' +
+      '</div><div class="sbCell" id="ping4">' +
       sendThis4[6] +
-      "</td></tr>";
+      "</div></div>";
   } else {
     document.getElementById("table4tbody").innerHTML +=
-      '<tr onmousedown="action(&grave;' +
+      '<div onmousedown="action(&grave;' +
       playerNameArg +
       "&grave;, " +
       0 +
-      ')" class="isDead"><td id="place4">' +
+      ')" class="isDead"><div class="sbCell" id="place4">' +
       place4 +
-      '</td><td id="name4">' +
+      '</div><div class="sbCell" id="name4">' +
       sendThis4[1] +
-      '</td><td id="kills4">' +
+      '</div><div class="sbCell" id="kills4">' +
       sendThis4[2] +
-      '</td><td id="deaths4">' +
+      '</div><div class="sbCell" id="deaths4">' +
       sendThis4[3] +
-      '</td><td id="points4">' +
+      '</div><div class="sbCell" id="points4">' +
       sendThis4[4] +
-      '</td><td id="ping4">' +
+      '</div><div class="sbCell" id="ping4">' +
       sendThis4[6] +
-      "</td></tr>";
+      "</div></div>";
   }
 }
 function updateScoreboardBody6() {
   while (8 > place3) {
     document.getElementById("table3tbody").innerHTML +=
-      '<tr id="empty"><td id="place3"></td><td id="name3"></td><td id="kills3"></td><td id="deaths3"></td><td id="points3"></td><td id="ping3"></td></tr>';
+      '<div id="empty" class="sbRow"><div class="sbCell" id="place3"></div><div class="sbCell" id="name3"></div><div class="sbCell" id="kills3"></div><div class="sbCell" id="deaths3"></div><div class="sbCell" id="points3"></div><div class="sbCell" id="ping3"></div></div>';
     place3 += 1;
   }
   while (8 > place4) {
     document.getElementById("table4tbody").innerHTML +=
-      '<tr id="empty"><td id="place4"></td><td id="name4"></td><td id="kills4"></td><td id="deaths4"></td><td id="points4"></td><td id="ping4"></td></tr>';
+      '<div id="empty" class="sbRow"><div class="sbCell" id="place4"></div><div class="sbCell" id="name4"></div><div class="sbCell" id="kills4"></div><div class="sbCell" id="deaths4"></div><div class="sbCell" id="points4"></div><div class="sbCell" id="ping4"></div></div>';
     place4 += 1;
   }
   document.getElementById("table1").style.height = null;
@@ -2527,8 +2603,8 @@ function updateScoreboardBody6() {
   document.getElementById("table2").style.height = height + "px";
   document.getElementById("table3").style.height = height + "px";
   document.getElementById("table4").style.height = height + "px";
-  document.getElementById("table3").style.display = "inline";
-  document.getElementById("table4").style.display = "inline";
+  document.getElementById("table3").style.display = "flex";
+  document.getElementById("table4").style.display = "flex";
 }
 function clearScoreboardBody() {
   document.getElementById("mapRotationTab").style.display = null;
@@ -2570,13 +2646,14 @@ function clearScoreboardBody() {
   place3 = 0;
   place4 = 0;
   document.getElementById("table1").innerHTML =
-    '<tbody id="table1tbody"><tr id="firstrow"><th id="team1">US</th><th id="tickets1">50</th><th id="killsHeader1">K</th><th id="deathsHeader1">D</th><th id="scoreHeader1">SCORE</th><th id="pingHeader1">PING</th></tr></tbody>';
+    '<div class="sbBody" id="table1tbody"><div class="sbRow" id="firstrow"><div class="sbCell" id="team1">RU</div><div class="sbCell" id="tickets1">50</div><div class="sbCell" id="killsHeader1">K</div><div class="sbCell" id="deathsHeader1">D</div><div class="sbCell" id="scoreHeader1">SCORE</div><div class="sbCell" id="pingHeader1">PING</div></div></div>';
   document.getElementById("table2").innerHTML =
-    '<tbody id="table2tbody"><tr id="firstrow"><th id="team2">RU</th><th id="tickets2">50</th><th id="killsHeader2">K</th><th id="deathsHeader2">D</th><th id="scoreHeader2">SCORE</th><th id="pingHeader2">PING</th></tr></tbody>';
+    '<div class="sbBody" id="table2tbody"><div class="sbRow" id="firstrow"><div class="sbCell" id="team2">US</div><div class="sbCell" id="tickets2">50</div><div class="sbCell" id="killsHeader2">K</div><div class="sbCell" id="deathsHeader2">D</div><div class="sbCell" id="scoreHeader2">SCORE</div><div class="sbCell" id="pingHeader2">PING</div></div></div>';
 }
 
+
 function showWholeSquad(squad) {
-  if (squad != "squad0") {
+  if (squad != "squad0" && squad != "esquad0") {
     Array.prototype.forEach.call(
       document.getElementsByClassName(squad),
       function (element) {
@@ -2603,7 +2680,7 @@ function closeSmart() {
 }
 function showTabsAndEnableMouse() {
   WebUI.Call("EnableMouse");
-  document.getElementById("headertabs").style.display = "block";
+  document.getElementById("headertabs").style.display = "flex";
   document.getElementById("overlay").style.backgroundColor =
     "rgba(11, 35, 51, 0.28)";
 }
@@ -2612,6 +2689,11 @@ function showTabsAndEnableMouse() {
 /* Region Click on Topbar */
 /* Show/ Hide ServerInfo, Scoreboard, Settings, (Map Rotation, Server Setup) */
 function showServerInfo() {
+  biaSetActiveTab("serverInfoTab");
+  document.getElementById("mapRotationSettings").style.display = "none";
+  document.getElementById("serverSetupSettings").style.display = "none";
+  document.getElementById("managePresetsSettings").style.display = "none";
+  document.getElementById("manageModSettings").style.display = "none";
   WebUI.Call("ResetKeyboard");
   WebUI.Call("DispatchEvent", "WebUI:GetPlayerCount");
   if (document.getElementById("scoreboardTab").classList.contains("active")) {
@@ -2626,7 +2708,7 @@ function showServerInfo() {
   ) {
     document.getElementById("serverInfoTab").classList.add("active");
   }
-  document.getElementById("serverInfo").style.display = "inline";
+  document.getElementById("serverInfo").style.display = "flex";
   document.getElementById("tables").style.display = "none";
   document.getElementById("clientSettings").style.display = "none";
   document.getElementById("mapRotationSettings").style.display = null;
@@ -2673,6 +2755,11 @@ function getPlayerCount(count) {
 }
 
 function showScoreboard() {
+  biaSetActiveTab("scoreboardTab");
+  document.getElementById("mapRotationSettings").style.display = "none";
+  document.getElementById("serverSetupSettings").style.display = "none";
+  document.getElementById("managePresetsSettings").style.display = "none";
+  document.getElementById("manageModSettings").style.display = "none";
   WebUI.Call("ResetKeyboard");
   if (document.getElementById("serverInfoTab").classList.contains("active")) {
     document.getElementById("serverInfoTab").classList.remove("active");
@@ -2693,7 +2780,7 @@ function showScoreboard() {
     document.getElementById("serverSetupTab").classList.remove("active");
   }
   document.getElementById("serverInfo").style.display = "none";
-  document.getElementById("tables").style.display = "inline";
+  document.getElementById("tables").style.display = "flex";
   document.getElementById("clientSettings").style.display = "none";
   document.getElementById("mapRotationSettings").style.display = null;
   document.getElementById("serverSetupSettings").style.display = null;
@@ -2701,6 +2788,11 @@ function showScoreboard() {
   document.getElementById("manageModSettings").style.display = "none";
 }
 function showClientSettings() {
+  biaSetActiveTab("settingsTab");
+  document.getElementById("mapRotationSettings").style.display = "none";
+  document.getElementById("serverSetupSettings").style.display = "none";
+  document.getElementById("managePresetsSettings").style.display = "none";
+  document.getElementById("manageModSettings").style.display = "none";
   if (document.getElementById("serverInfoTab").classList.contains("active")) {
     document.getElementById("serverInfoTab").classList.remove("active");
   }
@@ -2720,7 +2812,7 @@ function showClientSettings() {
   }
   document.getElementById("serverInfo").style.display = "none";
   document.getElementById("tables").style.display = "none";
-  document.getElementById("clientSettings").style.display = "inline";
+  document.getElementById("clientSettings").style.display = "flex";
   document.getElementById("mapRotationSettings").style.display = null;
   document.getElementById("settingsTab").style.display = null;
   document.getElementById("mapRotationTab").style.display = null;
@@ -2734,6 +2826,7 @@ function showClientSettings() {
 
 /* Region Client Settings */
 function showGeneralClientSettings() {
+  biaShowLookHint(false);
   WebUI.Call("ResetKeyboard");
   if (
     document
@@ -2761,22 +2854,24 @@ function showGeneralClientSettings() {
     canEditMapList == true ||
     isOwner == true
   ) {
-    document.getElementById("serverSetup").style.display = "block";
+    document.getElementById("serverSetup").style.display = "flex";
   } else {
     document.getElementById("serverSetup").style.display = null;
   }
   if (canUseMapFunctions == true || isOwner == true) {
-    document.getElementById("mapRotationSetup").style.display = "block";
+    document.getElementById("mapRotationSetup").style.display = "flex";
   } else {
     document.getElementById("mapRotationSetup").style.display = null;
   }
-  document.getElementById("generalClientSettings").style.display = "block";
+  document.getElementById("generalClientSettings").style.display = "flex";
   document.getElementById("mouseSensitivtyClientSettings").style.display =
     "none";
   document.getElementById("fovClientSettings").style.display = "none";
 }
 
 function showMouseSensitivtyClientSettings() {
+  biaShowLookHint(true);
+  biaEnsureLookLocalApplied();
   WebUI.Call("DispatchEvent", "WebUI:GetMouseSensitivity");
   WebUI.Call("DispatchEvent", "WebUI:GetMouseSensitivityMultipliers");
   WebUI.Call("EnableKeyboard");
@@ -2809,6 +2904,8 @@ function showMouseSensitivtyClientSettings() {
   document.getElementById("fovClientSettings").style.display = "none";
 }
 function showFovClientSettings() {
+  biaShowLookHint(true);
+  biaEnsureLookLocalApplied();
   WebUI.Call("DispatchEvent", "WebUI:GetFieldOfView");
   WebUI.Call("EnableKeyboard");
   if (
@@ -2839,7 +2936,7 @@ function showFovClientSettings() {
   document.getElementById("generalClientSettings").style.display = "none";
   document.getElementById("mouseSensitivtyClientSettings").style.display =
     "none";
-  document.getElementById("fovClientSettings").style.display = "block";
+  document.getElementById("fovClientSettings").style.display = "flex";
 }
 function minusMouseSens(multiplier, min, step) {
   var x = parseFloat(document.getElementById(multiplier).value) - step;
@@ -2924,17 +3021,17 @@ function applyGeneralClientSettings() {
     document.getElementById("showLocalPing").style.display = "none";
     WebUI.Call("DispatchEvent", "WebUI:HidePing");
   } else {
-    document.getElementById("showLocalPing").style.display = "inline";
+    document.getElementById("showLocalPing").style.display = "flex";
     WebUI.Call("DispatchEvent", "WebUI:ShowPing");
   }
   if (document.getElementById("hideVotings").innerHTML == "No") {
     showHideVotings = true;
     if (isVoteInProgress == true) {
-      document.getElementById("votepopup").style.display = "inline";
+      document.getElementById("votepopup").classList.add("shown");
     }
   } else {
     showHideVotings = false;
-    document.getElementById("votepopup").style.display = "none";
+    document.getElementById("votepopup").classList.remove("shown");
   }
   if (document.getElementById("defaultMinimapSize").innerHTML == "Small") {
     WebUI.Call("DispatchEvent", "WebUI:SmallMiniMapSize");
@@ -2982,7 +3079,7 @@ function resetGeneralClientSettings() {
   document.getElementById("hideVotings").innerHTML = "No";
   showHideVotings = true;
   if (isVoteInProgress == true) {
-    document.getElementById("votepopup").style.display = "inline";
+    document.getElementById("votepopup").classList.add("shown");
   }
 
   channelsMuted = [];
@@ -3004,7 +3101,7 @@ function resetGeneralClientSettings() {
 /* Region show/hide localPlayer ping */
 function showLocalPlayerPing() {
   document.getElementById("showPing").innerHTML = "Yes";
-  document.getElementById("showLocalPing").style.display = "inline";
+  document.getElementById("showLocalPing").style.display = "flex";
 }
 
 function hideLocalPlayerPing() {
@@ -3023,6 +3120,10 @@ function updateLocalPlayerPing(ping) {
 
 /* Region admin map rotation */
 function mapRotationSetup() {
+  biaSetActiveTab("mapRotationTab");
+  document.getElementById("serverSetupSettings").style.display = "none";
+  document.getElementById("managePresetsSettings").style.display = "none";
+  document.getElementById("manageModSettings").style.display = "none";
   if (document.getElementById("serverInfoTab").classList.contains("active")) {
     document.getElementById("serverInfoTab").classList.remove("active");
   }
@@ -3038,12 +3139,11 @@ function mapRotationSetup() {
   ) {
     document.getElementById("mapRotationTab").classList.add("active");
   }
-  document.getElementById("settingsTab").style.display = "none";
-  document.getElementById("mapRotationTab").style.display = "block";
+  document.getElementById("mapRotationTab").style.display = "flex";
   document.getElementById("serverInfo").style.display = "none";
   document.getElementById("tables").style.display = "none";
   document.getElementById("clientSettings").style.display = "none";
-  document.getElementById("mapRotationSettings").style.display = "block";
+  document.getElementById("mapRotationSettings").style.display = "flex";
   document.getElementById("managePresetsSettings").style.display = "none";
   document.getElementById("manageModSettings").style.display = "none";
 
@@ -3053,11 +3153,15 @@ function mapRotationSetup() {
   document.getElementById("currentMap3").src =
     "fb://UI/Art/Menu/Icons/map_current";
   document.getElementById("nextMap3").src = "fb://UI/Art/Menu/Icons/map_next";
+
+  biaEnsureQueuePanel();
+  WebUI.Call("DispatchEvent", "WebUI:GetMapQueue");
 }
 
 function getCurrentMapRotation(args) {
   let currentMapIndex = args[1][0];
   let nextMapIndex = args[1][1];
+  biaAdvanceQueue(currentMapIndex);
   document.getElementById("mapRotationConfiguration").innerHTML = "";
   document.getElementById("mapListConfiguration").innerHTML = "";
   let o = 1;
@@ -3069,7 +3173,7 @@ function getCurrentMapRotation(args) {
       map = generateMapName(args[0][i]);
       let k = (i + 1) / 3;
       document.getElementById("mapRotationConfiguration").innerHTML +=
-        '<div onclick="setNextMap(' +
+        '<div onclick="biaQueueMapByIndex(' +
         k +
         ')" class="mapRotationFieldElement" id="mapRotationFieldElement' +
         k +
@@ -3117,7 +3221,7 @@ function getCurrentMapRotation(args) {
         ).innerHTML =
           '<span style="vertical-align: top;">' +
           mode +
-          '</span><img id="currentMap2" src="fb://UI/Art/Menu/Icons/map_current"/><img style="margin-left: 0;" id="nextMap2" src="fb://UI/Art/Menu/Icons/map_next"/>';
+          '</span><div class="mapMarker current" id="currentMap2"></div><div class="mapMarker next" id="nextMap2"></div>';
         document.getElementById("serverInfoMapBody").innerHTML = map;
         let mapUrl = generateMapUrl(args[0][n]);
         document.getElementById("serverInfoMapImg").style.backgroundImage =
@@ -3135,7 +3239,7 @@ function getCurrentMapRotation(args) {
         ).innerHTML =
           '<span style="vertical-align: top;">' +
           mode +
-          '</span><img id="currentMap" src=""/><img style="margin-left: 0;" id="nextMap" src=""/>';
+          '</span><div class="mapMarker current" id="currentMap"></div><div class="mapMarker next" id="nextMap"></div>';
       } else if (k - 1 == currentMapIndex) {
         let map = generateMapName(args[0][n]);
         document.getElementById("mapRotationCurrentMap").innerHTML =
@@ -3145,7 +3249,7 @@ function getCurrentMapRotation(args) {
         ).innerHTML =
           '<span style="vertical-align: top;">' +
           mode +
-          '</span><img id="currentMap2" src="fb://UI/Art/Menu/Icons/map_current"/>';
+          '</span><div class="mapMarker current" id="currentMap2"></div>';
         document.getElementById("serverInfoMapBody").innerHTML = map;
         let mapUrl = generateMapUrl(args[0][n]);
         document.getElementById("serverInfoMapImg").style.backgroundImage =
@@ -3163,7 +3267,7 @@ function getCurrentMapRotation(args) {
         ).innerHTML =
           '<span style="vertical-align: top;">' +
           mode +
-          '</span><img id="currentMap" src=""/>';
+          '</span><div class="mapMarker current" id="currentMap"></div>';
       } else if (k - 1 == nextMapIndex) {
         document.getElementById("mapRotationNextMap").innerHTML =
           map + ", " + mode;
@@ -3172,13 +3276,13 @@ function getCurrentMapRotation(args) {
         ).innerHTML =
           '<span style="vertical-align: top;">' +
           mode +
-          '</span><img id="nextMap2" src="fb://UI/Art/Menu/Icons/map_next"/>';
+          '</span><div class="mapMarker next" id="nextMap2"></div>';
         document.getElementById(
           "mapListFieldElement" + k + "gameMode"
         ).innerHTML =
           '<span style="vertical-align: top;">' +
           mode +
-          '</span><img id="nextMap" src=""/>';
+          '</span><div class="mapMarker next" id="nextMap"></div>';
       }
     } else if (o == 3) {
       n = i - 2;
@@ -3196,15 +3300,21 @@ function setNextMap(mapIndex) {
   WebUI.Call("DispatchEvent", "WebUI:SetNextMap", JSON.stringify(mapIndex));
 }
 function nextRound() {
+  biaFlushQueueSave();
   WebUI.Call("DispatchEvent", "WebUI:RunNextRound");
 }
 function restart() {
+  biaFlushQueueSave();
   WebUI.Call("DispatchEvent", "WebUI:RestartRound");
 }
 /* Endregion */
 
 /* Region admin server setup (work in progress)*/
 function serverSetup() {
+  biaSetActiveTab("serverSetupTab");
+  document.getElementById("mapRotationSettings").style.display = "none";
+  document.getElementById("managePresetsSettings").style.display = "none";
+  document.getElementById("manageModSettings").style.display = "none";
   WebUI.Call("EnableKeyboard");
   if (document.getElementById("serverInfoTab").classList.contains("active")) {
     document.getElementById("serverInfoTab").classList.remove("active");
@@ -3221,12 +3331,11 @@ function serverSetup() {
   ) {
     document.getElementById("serverSetupTab").classList.add("active");
   }
-  document.getElementById("settingsTab").style.display = "none";
-  document.getElementById("serverSetupTab").style.display = "block";
+  document.getElementById("serverSetupTab").style.display = "flex";
   document.getElementById("serverInfo").style.display = "none";
   document.getElementById("tables").style.display = "none";
   document.getElementById("clientSettings").style.display = "none";
-  document.getElementById("serverSetupSettings").style.display = "block";
+  document.getElementById("serverSetupSettings").style.display = "flex";
   document.getElementById("managePresetsSettings").style.display = "none";
   document.getElementById("manageModSettings").style.display = "none";
   WebUI.Call("DispatchEvent", "WebUI:GetServerSetupSettings");
@@ -3286,13 +3395,13 @@ function managePresets() {
 		document.getElementById("managePresetsTab").classList.add('active');
 	}
 	document.getElementById("settingsTab").style.display = "none";
-	document.getElementById("serverSetupTab").style.display = "block";*/
+	document.getElementById("serverSetupTab").style.display = "flex";*/
   document.getElementById("serverInfo").style.display = "none";
   document.getElementById("tables").style.display = "none";
   document.getElementById("clientSettings").style.display = "none";
   document.getElementById("serverSetupSettings").style.display = "none";
   document.getElementById("manageModSettings").style.display = "none";
-  document.getElementById("managePresetsSettings").style.display = "block";
+  document.getElementById("managePresetsSettings").style.display = "flex";
   WebUI.Call("DispatchEvent", "WebUI:GetPresetsSettings");
 }
 function getPresetsSettings(args) {
@@ -3534,7 +3643,7 @@ function minusPreset() {
     document.getElementById("presetHardcore").style.display = "none";
     document.getElementById("presetInfantry").style.display = "none";
     document.getElementById("presetHardcoreNoMap").style.display = "none";
-    document.getElementById("presetCustom").style.display = "block";
+    document.getElementById("presetCustom").style.display = "flex";
   } else if (
     document.getElementById("currentPresetInManagePresets").innerHTML ==
     "Custom"
@@ -3546,7 +3655,7 @@ function minusPreset() {
     document.getElementById("presetNormal").style.display = "none";
     document.getElementById("presetHardcore").style.display = "none";
     document.getElementById("presetInfantry").style.display = "none";
-    document.getElementById("presetHardcoreNoMap").style.display = "block";
+    document.getElementById("presetHardcoreNoMap").style.display = "flex";
     document.getElementById("presetCustom").style.display = "none";
   } else if (
     document.getElementById("currentPresetInManagePresets").innerHTML ==
@@ -3557,7 +3666,7 @@ function minusPreset() {
       "Infantry";
     document.getElementById("presetNormal").style.display = "none";
     document.getElementById("presetHardcore").style.display = "none";
-    document.getElementById("presetInfantry").style.display = "block";
+    document.getElementById("presetInfantry").style.display = "flex";
     document.getElementById("presetHardcoreNoMap").style.display = "none";
     document.getElementById("presetCustom").style.display = "none";
   } else if (
@@ -3568,7 +3677,7 @@ function minusPreset() {
     document.getElementById("currentPresetInManagePresets").innerHTML =
       "Hardcore";
     document.getElementById("presetNormal").style.display = "none";
-    document.getElementById("presetHardcore").style.display = "block";
+    document.getElementById("presetHardcore").style.display = "flex";
     document.getElementById("presetInfantry").style.display = "none";
     document.getElementById("presetHardcoreNoMap").style.display = "none";
     document.getElementById("presetCustom").style.display = "none";
@@ -3579,7 +3688,7 @@ function minusPreset() {
     document.getElementById("serverSetupCurrentPreset").innerHTML = "Normal";
     document.getElementById("currentPresetInManagePresets").innerHTML =
       "Normal";
-    document.getElementById("presetNormal").style.display = "block";
+    document.getElementById("presetNormal").style.display = "flex";
     document.getElementById("presetHardcore").style.display = "none";
     document.getElementById("presetInfantry").style.display = "none";
     document.getElementById("presetHardcoreNoMap").style.display = "none";
@@ -3595,7 +3704,7 @@ function plusPreset() {
     document.getElementById("currentPresetInManagePresets").innerHTML =
       "Hardcore";
     document.getElementById("presetNormal").style.display = "none";
-    document.getElementById("presetHardcore").style.display = "block";
+    document.getElementById("presetHardcore").style.display = "flex";
     document.getElementById("presetInfantry").style.display = "none";
     document.getElementById("presetHardcoreNoMap").style.display = "none";
     document.getElementById("presetCustom").style.display = "none";
@@ -3608,7 +3717,7 @@ function plusPreset() {
       "Infantry";
     document.getElementById("presetNormal").style.display = "none";
     document.getElementById("presetHardcore").style.display = "none";
-    document.getElementById("presetInfantry").style.display = "block";
+    document.getElementById("presetInfantry").style.display = "flex";
     document.getElementById("presetHardcoreNoMap").style.display = "none";
     document.getElementById("presetCustom").style.display = "none";
   } else if (
@@ -3622,7 +3731,7 @@ function plusPreset() {
     document.getElementById("presetNormal").style.display = "none";
     document.getElementById("presetHardcore").style.display = "none";
     document.getElementById("presetInfantry").style.display = "none";
-    document.getElementById("presetHardcoreNoMap").style.display = "block";
+    document.getElementById("presetHardcoreNoMap").style.display = "flex";
     document.getElementById("presetCustom").style.display = "none";
   } else if (
     document.getElementById("currentPresetInManagePresets").innerHTML ==
@@ -3635,7 +3744,7 @@ function plusPreset() {
     document.getElementById("presetHardcore").style.display = "none";
     document.getElementById("presetInfantry").style.display = "none";
     document.getElementById("presetHardcoreNoMap").style.display = "none";
-    document.getElementById("presetCustom").style.display = "block";
+    document.getElementById("presetCustom").style.display = "flex";
   } else if (
     document.getElementById("currentPresetInManagePresets").innerHTML ==
     "Custom"
@@ -3643,7 +3752,7 @@ function plusPreset() {
     document.getElementById("serverSetupCurrentPreset").innerHTML = "Normal";
     document.getElementById("currentPresetInManagePresets").innerHTML =
       "Normal";
-    document.getElementById("presetNormal").style.display = "block";
+    document.getElementById("presetNormal").style.display = "flex";
     document.getElementById("presetHardcore").style.display = "none";
     document.getElementById("presetInfantry").style.display = "none";
     document.getElementById("presetHardcoreNoMap").style.display = "none";
@@ -4382,7 +4491,7 @@ function manageModSettings() {
   document.getElementById("clientSettings").style.display = "none";
   document.getElementById("serverSetupSettings").style.display = "none";
   document.getElementById("managePresetsSettings").style.display = "none";
-  document.getElementById("manageModSettings").style.display = "block";
+  document.getElementById("manageModSettings").style.display = "flex";
   //WebUI.Call('DispatchEvent', 'WebUI:GetPresetsSettings');
 }
 
@@ -4611,13 +4720,13 @@ function hideLoadingScreen() {
 }
 
 function showLoadingScreen() {
-  document.getElementById("banner").style.display = "inline";
+  document.getElementById("banner").style.display = "flex";
 }
 /* Endregion */
 
 /* Region ServerOwner Quick Server Setup */
 function quickServerSetup() {
-  //document.getElementById("quickSetupPopup").style.display = "inline";
+  //document.getElementById("quickSetupPopup").style.display = "flex";
 }
 /* Endregion */
 
@@ -4635,3 +4744,779 @@ function escapestring(stringToEscape, withBackSlash) {
   }
   return stringToEscape;
 }
+
+/* Gameface: <input type="checkbox"> is unsupported, these are div switches. */
+function toggleBiaCheck(el) {
+  if (el.classList.contains("checked")) {
+    el.classList.remove("checked");
+  } else {
+    el.classList.add("checked");
+  }
+}
+
+/* ==========================================================================
+   Map rotation queue + Manage Map Rotation + Ban/Admin lists + map vote
+   Server owns the queue; silent autosave 10s after last edit.
+   ========================================================================== */
+var biaMapQueue = [];
+var biaQueueRandom = false;
+var biaLastCurrentMap = null;
+var biaSaveTimer = null;
+var biaRotationMode = "Startup";
+var biaListMode = "bans";
+var biaBanList = [];
+var biaAdminList = [];
+var biaTipTimer = null;
+var biaMapVoteActive = false;
+var biaSuppressRestoreUntil = 0;
+var biaLocalDirty = false;
+
+function biaEnsureQueuePanel() {
+  if (document.getElementById("mapQueuePanel")) {
+    return;
+  }
+  var anchor = document.getElementById("mapRotationNextMap");
+  var host = null;
+  var after = null;
+  if (anchor && anchor.parentNode && anchor.parentNode.parentNode) {
+    after = anchor.parentNode;
+    host = after.parentNode;
+  } else {
+    host = document.getElementById("mapRotationSettings");
+  }
+  if (!host) {
+    return;
+  }
+  var panel = document.createElement("div");
+  panel.id = "mapQueuePanel";
+  panel.innerHTML =
+    '<div id="mapQueueHeader">Next Map Queue' +
+    '<div id="mapQueueRandom" class="mapQueueToggle" onclick="biaToggleRandom()">' +
+    '<div class="mapQueueToggleBox"></div>Random</div>' +
+    '<div class="mapQueueBtn biaTipBtn" data-tip="Announce the next maps in chat to all players" onclick="biaAnnounceQueue()">!</div>' +
+    '<div class="mapQueueBtn biaTipBtn" data-tip="Force the current queue head to load now (runs next round)" onclick="biaForceNextFromQueue()">&raquo;</div>' +
+    '<div class="mapQueueBtn biaTipBtn" data-tip="Clear the entire map queue" onclick="biaClearQueue()">X</div>' +
+    "</div>" +
+    '<div id="mapQueueList"></div>';
+  if (after && after.nextSibling) {
+    host.insertBefore(panel, after.nextSibling);
+  } else {
+    host.appendChild(panel);
+  }
+  biaBindTooltips(panel);
+  biaRenderQueue();
+}
+
+/* Hover >1.5s shows a floating tip under the button (Gameface has no title tooltips). */
+var biaTipMouseX = 0;
+var biaTipMouseY = 0;
+
+function biaBindTooltips(root) {
+  var btns = root.querySelectorAll(".biaTipBtn");
+  for (var i = 0; i < btns.length; i++) {
+    (function (btn) {
+      btn.addEventListener("mousemove", function (e) {
+        biaTipMouseX = e.clientX;
+        biaTipMouseY = e.clientY;
+        var tip = document.getElementById("biaFloatTip");
+        if (tip) {
+          biaPlaceTip(tip, biaTipMouseX, biaTipMouseY);
+        }
+      });
+      btn.addEventListener("mouseenter", function (e) {
+        biaTipMouseX = e.clientX;
+        biaTipMouseY = e.clientY;
+        if (biaTipTimer) {
+          clearTimeout(biaTipTimer);
+        }
+        biaTipTimer = setTimeout(function () {
+          biaTipTimer = null;
+          biaShowTip(btn, biaTipMouseX, biaTipMouseY);
+        }, 1500);
+      });
+      btn.addEventListener("mouseleave", function () {
+        if (biaTipTimer) {
+          clearTimeout(biaTipTimer);
+          biaTipTimer = null;
+        }
+        biaHideTip();
+      });
+    })(btns[i]);
+  }
+}
+
+function biaPlaceTip(tip, clientX, clientY) {
+  // body { transform: scale(1.3) } makes position:fixed resolve against body,
+  // not the viewport. Convert client (viewport) coords into body's local space.
+  var body = document.body;
+  var br = body.getBoundingClientRect();
+  var bw = body.offsetWidth || 1074;
+  var bh = body.offsetHeight || 473;
+  var scaleX = br.width / bw;
+  var scaleY = br.height / bh;
+  if (!scaleX || scaleX < 0.01) scaleX = 1;
+  if (!scaleY || scaleY < 0.01) scaleY = 1;
+
+  var pad = 12;
+  var localX = (clientX - br.left) / scaleX + pad;
+  var localY = (clientY - br.top) / scaleY + pad;
+
+  tip.style.position = "absolute";
+  tip.style.left = localX + "px";
+  tip.style.top = localY + "px";
+
+  var w = tip.offsetWidth || 160;
+  var h = tip.offsetHeight || 40;
+  if (localX + w > bw - 4) {
+    tip.style.left = Math.max(4, (clientX - br.left) / scaleX - w - pad) + "px";
+  }
+  if (localY + h > bh - 4) {
+    tip.style.top = Math.max(4, (clientY - br.top) / scaleY - h - pad) + "px";
+  }
+}
+
+function biaShowTip(btn, x, y) {
+  biaHideTip();
+  var tip = document.createElement("div");
+  tip.id = "biaFloatTip";
+  tip.textContent = btn.getAttribute("data-tip") || "";
+  // must be inside body (transformed containing block)
+  document.body.appendChild(tip);
+  biaPlaceTip(tip, x || biaTipMouseX, y || biaTipMouseY);
+}
+
+function biaHideTip() {
+  var tip = document.getElementById("biaFloatTip");
+  if (tip && tip.parentNode) {
+    tip.parentNode.removeChild(tip);
+  }
+}
+
+function biaToggleRandom() {
+  biaQueueRandom = !biaQueueRandom;
+  biaRenderQueue();
+  biaQueueSaveSoon();
+}
+
+function biaQueueMap(mapIndex, mapName, mapMode) {
+  for (var i = 0; i < biaMapQueue.length; i++) {
+    if (
+      biaMapQueue[i].index === mapIndex &&
+      biaMapQueue[i].name === mapName &&
+      biaMapQueue[i].mode === mapMode
+    ) {
+      var existing = biaMapQueue.splice(i, 1)[0];
+      biaMapQueue.push(existing);
+      biaEnsureQueuePanel();
+      biaSetRotationMode("Queue");
+      biaRenderQueue();
+      biaQueueSaveSoon();
+      return;
+    }
+  }
+  biaMapQueue.push({ index: mapIndex, name: mapName, mode: mapMode });
+  biaEnsureQueuePanel();
+  biaSetRotationMode("Queue");
+  biaRenderQueue();
+  biaQueueSaveSoon();
+}
+
+function biaRemoveFromQueue(i) {
+  biaMapQueue.splice(i, 1);
+  biaRenderQueue();
+  if (biaMapQueue.length === 0) {
+    biaSetRotationMode("Startup");
+  }
+  biaQueueSaveSoon();
+}
+
+function biaMoveInQueue(i, delta) {
+  var to = i + delta;
+  if (to < 0 || to >= biaMapQueue.length) {
+    return;
+  }
+  var moved = biaMapQueue.splice(i, 1)[0];
+  biaMapQueue.splice(to, 0, moved);
+  biaRenderQueue();
+  biaQueueSaveSoon();
+}
+
+function biaClearQueue() {
+  biaMapQueue = [];
+  biaLocalDirty = true;
+  biaSuppressRestoreUntil = Date.now() + 5000;
+  biaRenderQueue();
+  biaSetRotationMode("Startup");
+  biaFlushQueueSave();
+}
+
+function biaLookupModeForIndex(k) {
+  var modeEl =
+    document.getElementById("mapRotationFieldElement" + k + "gameMode") ||
+    document.getElementById("mapListFieldElement" + k + "gameMode");
+  if (!modeEl) {
+    return "";
+  }
+  var mode = modeEl.innerText || modeEl.textContent || "";
+  return mode.replace(/\s+/g, " ").trim();
+}
+
+function biaRenderQueue() {
+  var toggle = document.getElementById("mapQueueRandom");
+  if (toggle) {
+    if (biaQueueRandom) {
+      toggle.classList.add("checked");
+    } else {
+      toggle.classList.remove("checked");
+    }
+  }
+  var list = document.getElementById("mapQueueList");
+  if (!list) {
+    return;
+  }
+  if (biaMapQueue.length === 0) {
+    list.innerHTML =
+      '<div id="mapQueueEmpty">Click maps in the list to queue them. Use Vote to pick next.</div>';
+    return;
+  }
+  var html = "";
+  for (var i = 0; i < biaMapQueue.length; i++) {
+    var entry = biaMapQueue[i];
+    if (!entry.mode && entry.index != null) {
+      entry.mode = biaLookupModeForIndex(entry.index);
+    }
+    var modeText = entry.mode || "";
+    html +=
+      '<div class="mapQueueRow' + (i === 0 ? " mapQueueUpNext" : "") + '">' +
+      '<div class="mapQueuePos">' + (i + 1) + "</div>" +
+      '<div class="mapQueueName">' + entry.name + "</div>" +
+      '<div class="mapQueueMode">' + modeText + "</div>" +
+      '<div class="mapQueueBtn biaTipBtn" data-tip="Start a public vote to make this the next map" onclick="biaStartMapVote(' + i + ')">Vote</div>' +
+      '<div class="mapQueueBtn" onclick="biaMoveInQueue(' + i + ', -1)">&#8593;</div>' +
+      '<div class="mapQueueBtn" onclick="biaMoveInQueue(' + i + ', 1)">&#8595;</div>' +
+      '<div class="mapQueueBtn" onclick="biaRemoveFromQueue(' + i + ')">X</div>' +
+      "</div>";
+  }
+  list.innerHTML = html;
+  biaBindTooltips(list);
+}
+
+function biaAdvanceQueue(currentMapIndex) {
+  biaEnsureQueuePanel();
+  biaLastCurrentMap = currentMapIndex;
+}
+
+function biaQueueMapByIndex(k) {
+  var name = "MAP " + k;
+  var mode = "";
+  var nameEl =
+    document.getElementById("mapRotationFieldElement" + k + "map") ||
+    document.getElementById("mapListFieldElement" + k + "map");
+  // ids are ...gameMode (camelCase g lower) — GameMode never matched, mode was always empty
+  var modeEl =
+    document.getElementById("mapRotationFieldElement" + k + "gameMode") ||
+    document.getElementById("mapListFieldElement" + k + "gameMode");
+  if (nameEl) {
+    name = nameEl.innerHTML.replace(/<[^>]+>/g, "").trim();
+  }
+  if (modeEl) {
+    // strip markers/spans, keep mode text only
+    mode = modeEl.innerText || modeEl.textContent || "";
+    mode = mode.replace(/\s+/g, " ").trim();
+  }
+  biaQueueMap(k, name, mode);
+}
+
+function biaSetActiveTab(id) {
+  var tabs = [
+    "serverInfoTab",
+    "scoreboardTab",
+    "settingsTab",
+    "mapRotationTab",
+    "serverSetupTab"
+  ];
+  for (var i = 0; i < tabs.length; i++) {
+    var el = document.getElementById(tabs[i]);
+    if (!el) {
+      continue;
+    }
+    if (tabs[i] === id) {
+      if (!el.classList.contains("active")) {
+        el.classList.add("active");
+      }
+    } else if (el.classList.contains("active")) {
+      el.classList.remove("active");
+    }
+  }
+}
+
+function biaSetRotationMode(mode) {
+  biaRotationMode = mode;
+  var el = document.getElementById("serverSetupCurrentMapRotation");
+  if (el) {
+    el.innerHTML = mode;
+  }
+}
+
+function mapRotationPlus() {
+  biaSetRotationMode(biaRotationMode === "Startup" ? "Queue" : "Startup");
+}
+
+function mapRotationMinus() {
+  mapRotationPlus();
+}
+
+function manageMapRotations() {
+  biaEnsureQueuePanel();
+  WebUI.Call("DispatchEvent", "WebUI:GetMapQueue");
+}
+
+function biaSaveQueueNow() {
+  var payload = [];
+  for (var i = 0; i < biaMapQueue.length; i++) {
+    payload.push({
+      index: biaMapQueue[i].index,
+      name: biaMapQueue[i].name,
+      mode: biaMapQueue[i].mode
+    });
+  }
+  biaLocalDirty = false;
+  // suppress server MapQueue echo so it cannot clobber in-flight UI edits
+  biaSuppressRestoreUntil = Date.now() + 5000;
+  WebUI.Call(
+    "DispatchEvent",
+    "WebUI:SaveMapQueue",
+    JSON.stringify({ random: biaQueueRandom, maps: payload })
+  );
+}
+
+function restoreMapQueue(args) {
+  if (!args) {
+    return;
+  }
+  // Ignore server echo for a few seconds after local edits/clear, otherwise
+  // an empty BroadcastQueue from "clear" arrives after the player already
+  // re-queued maps and wipes the UI (and blocks further adds until reload).
+  if (Date.now() < biaSuppressRestoreUntil || biaLocalDirty) {
+    return;
+  }
+  biaQueueRandom = args.random === true;
+  biaMapQueue = args.maps || [];
+  biaEnsureQueuePanel();
+  if (biaMapQueue.length > 0) {
+    biaSetRotationMode("Queue");
+  } else {
+    biaSetRotationMode("Startup");
+  }
+  biaRenderQueue();
+}
+
+function biaQueueSaveSoon() {
+  biaLocalDirty = true;
+  biaSuppressRestoreUntil = Date.now() + 12000;
+  if (biaSaveTimer !== null) {
+    clearTimeout(biaSaveTimer);
+  }
+  // 10s after last change — resets if another edit comes in first
+  biaSaveTimer = setTimeout(function () {
+    biaSaveTimer = null;
+    biaSaveQueueNow();
+  }, 10000);
+}
+
+function biaFlushQueueSave() {
+  if (biaSaveTimer !== null) {
+    clearTimeout(biaSaveTimer);
+    biaSaveTimer = null;
+  }
+  biaSaveQueueNow();
+}
+
+function biaForceNextFromQueue() {
+  biaFlushQueueSave();
+  WebUI.Call("DispatchEvent", "WebUI:ForceNextFromQueue");
+}
+
+function biaAnnounceQueue() {
+  WebUI.Call("DispatchEvent", "WebUI:AnnounceQueue");
+}
+
+/* --- vote for next map from queue -------------------------------------- */
+function biaStartMapVote(i) {
+  if (i < 0 || i >= biaMapQueue.length) {
+    return;
+  }
+  if (biaMapVoteActive || isVoteInProgress) {
+    showPopupResponse([
+      "Vote in progress.",
+      "Finish the current vote before starting another."
+    ]);
+    return;
+  }
+  var entry = biaMapQueue[i];
+  WebUI.Call(
+    "DispatchEvent",
+    "WebUI:StartMapVote",
+    JSON.stringify({
+      index: entry.index,
+      name: entry.name,
+      mode: entry.mode || ""
+    })
+  );
+}
+
+var biaMapVoteTimer = null;
+
+
+var biaMarqueeTimer = null;
+
+function biaStopVoteMarquee() {
+  if (biaMarqueeTimer !== null) {
+    clearInterval(biaMarqueeTimer);
+    biaMarqueeTimer = null;
+  }
+}
+
+function biaStartVoteMarquee() {
+  biaStopVoteMarquee();
+  var wrap = document.getElementById("votetitleleft");
+  if (!wrap) return;
+  var inner = wrap.querySelector(".biaMarqueeInner");
+  if (!inner) return;
+  inner.style.marginLeft = "0px";
+  // Gameface often ignores CSS @keyframes — scroll with JS instead
+  var need = inner.scrollWidth - wrap.clientWidth;
+  if (need <= 8) {
+    return;
+  }
+  var pos = 0;
+  var pause = 40; // frames to wait at start/end (~2s at 50ms)
+  var phase = "pauseStart"; // pauseStart -> scroll -> pauseEnd -> reset
+  biaMarqueeTimer = setInterval(function () {
+    if (!biaMapVoteActive) {
+      biaStopVoteMarquee();
+      return;
+    }
+    if (phase === "pauseStart" || phase === "pauseEnd") {
+      pause -= 1;
+      if (pause <= 0) {
+        if (phase === "pauseStart") {
+          phase = "scroll";
+        } else {
+          pos = 0;
+          inner.style.marginLeft = "0px";
+          phase = "pauseStart";
+          pause = 40;
+        }
+      }
+      return;
+    }
+    pos -= 1;
+    if (pos <= -need) {
+      pos = -need;
+      inner.style.marginLeft = pos + "px";
+      phase = "pauseEnd";
+      pause = 50;
+      return;
+    }
+    inner.style.marginLeft = pos + "px";
+  }, 40);
+}
+
+
+
+
+function startMapVote(args) {
+  if (!args) {
+    return;
+  }
+  biaMapVoteActive = true;
+  isVoteInProgress = true;
+  secondsLeft = args.seconds || 30;
+  yesvotes = args.yes || 1;
+  novotes = args.no || 0;
+  showHideVotings = true;
+  var label = args.name || "Map";
+  if (args.mode) {
+    label = label + " (" + args.mode + ")";
+  }
+  document.getElementById("votepopup").classList.add("shown");
+  document.getElementById("votetitleleft").innerHTML =
+    '<p class="biaMarquee"><span class="biaMarqueeInner">Next map: ' +
+    label +
+    "</span></p>";
+  document.getElementById("votetitleleft").style.width = "80%";
+  document.getElementById("votetitleright").innerHTML =
+    "<p>" + secondsLeft + " sec</p>";
+  // scroll long titles left after layout
+  setTimeout(biaStartVoteMarquee, 50);
+  document.getElementById("countyesvotes").innerHTML = "" + yesvotes + " Y";
+  document.getElementById("countnovotes").innerHTML = "" + novotes + " N";
+  document.getElementById("voteyes").style.fontWeight = "900";
+  document.getElementById("voteno").style.fontWeight = null;
+  // Click rows to vote (F8/F9 also handled in Client BiaManager)
+  document.getElementById("voteyes").onclick = function () {
+    if (biaMapVoteActive) {
+      biaMapVoteYes();
+    }
+  };
+  document.getElementById("voteno").onclick = function () {
+    if (biaMapVoteActive) {
+      biaMapVoteNo();
+    }
+  };
+  if (biaMapVoteTimer !== null) {
+    clearInterval(biaMapVoteTimer);
+  }
+  biaMapVoteTimer = setInterval(function () {
+    if (!biaMapVoteActive) {
+      clearInterval(biaMapVoteTimer);
+      biaMapVoteTimer = null;
+      return;
+    }
+    secondsLeft = secondsLeft - 1;
+    if (secondsLeft < 0) {
+      secondsLeft = 0;
+    }
+    document.getElementById("votetitleright").innerHTML =
+      "<p>" + secondsLeft + " sec</p>";
+    if (secondsLeft <= 0) {
+      clearInterval(biaMapVoteTimer);
+      biaMapVoteTimer = null;
+      // Safety: if server MapVoteEnd was lost (e.g. mid round-start), close UI
+      setTimeout(function () {
+        if (biaMapVoteActive) {
+          endMapVote({ success: false, cancelled: true });
+        }
+      }, 1500);
+    }
+  }, 1000);
+}
+
+function updateMapVote(args) {
+  if (!args) {
+    return;
+  }
+  yesvotes = args.yes || 0;
+  novotes = args.no || 0;
+  if (showHideVotings == true) {
+    document.getElementById("countyesvotes").innerHTML = "" + yesvotes + " Y";
+    document.getElementById("countnovotes").innerHTML = "" + novotes + " N";
+  }
+}
+
+function endMapVote(args) {
+  biaMapVoteActive = false;
+  isVoteInProgress = false;
+  biaStopVoteMarquee();
+  if (biaMapVoteTimer !== null) {
+    clearInterval(biaMapVoteTimer);
+    biaMapVoteTimer = null;
+  }
+  var popup = document.getElementById("votepopup");
+  if (popup) {
+    popup.classList.remove("shown");
+  }
+  var yes = document.getElementById("voteyes");
+  var no = document.getElementById("voteno");
+  var left = document.getElementById("votetitleleft");
+  if (yes) {
+    yes.style.fontWeight = null;
+    yes.onclick = null;
+  }
+  if (no) {
+    no.style.fontWeight = null;
+    no.onclick = null;
+  }
+  if (left) {
+    left.style.width = null;
+  }
+}
+
+/* Hook existing F8/F9 vote handlers when a map vote is active.
+   The original client already binds keys to WebUI events; we also expose
+   these for the yes/no rows if clicked. */
+function biaMapVoteYes() {
+  if (!biaMapVoteActive) {
+    return;
+  }
+  WebUI.Call("DispatchEvent", "WebUI:MapVoteYes");
+  document.getElementById("voteyes").style.fontWeight = "900";
+  document.getElementById("voteno").style.fontWeight = null;
+}
+
+function biaMapVoteNo() {
+  if (!biaMapVoteActive) {
+    return;
+  }
+  WebUI.Call("DispatchEvent", "WebUI:MapVoteNo");
+  document.getElementById("voteno").style.fontWeight = "900";
+  document.getElementById("voteyes").style.fontWeight = null;
+}
+
+/* Patch voteYes/voteNo only for map votes — keep original counter for kick/ban.
+   Original voteYes just increments local UI; server drives map vote counts. */
+var _biaOrigVoteYes = typeof voteYes === "function" ? voteYes : null;
+var _biaOrigVoteNo = typeof voteNo === "function" ? voteNo : null;
+
+voteYes = function () {
+  if (biaMapVoteActive) {
+    biaMapVoteYes();
+    return;
+  }
+  if (_biaOrigVoteYes) {
+    _biaOrigVoteYes();
+  }
+};
+
+voteNo = function () {
+  if (biaMapVoteActive) {
+    biaMapVoteNo();
+    return;
+  }
+  if (_biaOrigVoteNo) {
+    _biaOrigVoteNo();
+  }
+};
+
+/* --- ban / admin manager ------------------------------------------------ */
+function biaEnsureListPanel() {
+  if (document.getElementById("biaListPanel")) {
+    return;
+  }
+  var panel = document.createElement("div");
+  panel.id = "biaListPanel";
+  panel.innerHTML =
+    '<div id="biaListHeader">Manage Lists' +
+    '<div class="biaListBtn" style="margin-left:auto" onclick="biaCloseLists()">X</div>' +
+    "</div>" +
+    '<div id="biaListTabs">' +
+    '<div class="biaListTab active" id="biaTabBans" onclick="biaShowLists(\'bans\')">Ban List</div>' +
+    '<div class="biaListTab" id="biaTabAdmins" onclick="biaShowLists(\'admins\')">Admin List</div>' +
+    "</div>" +
+    '<div id="biaListBody"></div>';
+  document.body.appendChild(panel);
+}
+
+function biaShowLists(mode) {
+  biaEnsureListPanel();
+  biaListMode = mode || biaListMode;
+  document.getElementById("biaListPanel").classList.add("open");
+  var bans = document.getElementById("biaTabBans");
+  var admins = document.getElementById("biaTabAdmins");
+  if (biaListMode === "bans") {
+    bans.classList.add("active");
+    admins.classList.remove("active");
+    WebUI.Call("DispatchEvent", "WebUI:GetBanList");
+  } else {
+    admins.classList.add("active");
+    bans.classList.remove("active");
+    WebUI.Call("DispatchEvent", "WebUI:GetAdminList");
+  }
+  biaRenderList();
+}
+
+function biaCloseLists() {
+  var panel = document.getElementById("biaListPanel");
+  if (panel) {
+    panel.classList.remove("open");
+  }
+}
+
+function getBanList(args) {
+  biaBanList = args || [];
+  if (biaListMode === "bans") {
+    biaRenderList();
+  }
+}
+
+function getAdminList(args) {
+  biaAdminList = args || [];
+  if (biaListMode === "admins") {
+    biaRenderList();
+  }
+}
+
+function biaUnban(name) {
+  WebUI.Call("DispatchEvent", "WebUI:UnbanPlayer", name);
+}
+
+function biaRemoveAdmin(name) {
+  WebUI.Call("DispatchEvent", "WebUI:RemoveAdmin", name);
+}
+
+function promoteToAdmin(name) {
+  if (biaIsBot(name)) {
+    showPopupResponse([
+      "That is a bot.",
+      name + " is an AI player and cannot be promoted to admin."
+    ]);
+    return;
+  }
+  biaAddAdminFromScoreboard(name);
+}
+
+function biaAddAdminFromScoreboard(name) {
+  WebUI.Call("DispatchEvent", "WebUI:AddAdmin", name);
+}
+
+function biaRenderList() {
+  var body = document.getElementById("biaListBody");
+  if (!body) {
+    return;
+  }
+  var rows = biaListMode === "bans" ? biaBanList : biaAdminList;
+  if (!rows || rows.length === 0) {
+    body.innerHTML =
+      '<div class="biaListEmpty">' +
+      (biaListMode === "bans" ? "No banned players." : "No admins set.") +
+      "</div>";
+    return;
+  }
+  var html = "";
+  for (var i = 0; i < rows.length; i++) {
+    var entry = rows[i];
+    var name = entry.name || entry;
+    var meta = entry.reason || entry.rights || "";
+    var safeName = String(name).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+    var action =
+      biaListMode === "bans"
+        ? '<div class="biaListBtn" onclick="biaUnban(\'' + safeName + '\')">Unban</div>'
+        : '<div class="biaListBtn" onclick="biaRemoveAdmin(\'' + safeName + '\')">Remove</div>';
+    html +=
+      '<div class="biaListRow">' +
+      '<div class="biaListName">' + name + "</div>" +
+      '<div class="biaListMeta">' + meta + "</div>" +
+      action +
+      "</div>";
+  }
+  body.innerHTML = html;
+}
+
+function biaIsBot(name) {
+  return typeof name === "string" && name.indexOf("BOT_") === 0;
+}
+
+function biaRefuseBot(name) {
+  showPopupResponse([
+    "That is a bot.",
+    name + " is an AI player and cannot be banned or kicked from the ban list."
+  ]);
+}
+
+
+/* Restore FOV/sens from this PC when WebUI boots (incl. after level reload) */
+(function biaBootLookLocal() {
+  function run() {
+    try {
+      biaApplyLookLocalToGame();
+    } catch (e) {}
+  }
+  if (document.readyState === "complete" || document.readyState === "interactive") {
+    setTimeout(run, 1500);
+  } else {
+    document.addEventListener("DOMContentLoaded", function () {
+      setTimeout(run, 1500);
+    });
+  }
+})();

@@ -242,6 +242,13 @@ function Scoreboard:UpdateUI(p_Player)
 	end
 
 	for index,player in pairs(s_PlayerListTeam2) do
+		-- the enemy team never sent its kit, so tables 2-4 could never show kit icons
+		local s_Kit = "ID_M_DEAD"
+
+		if player.customization ~= nil then
+			s_Kit = CharacterCustomizationAsset(player.customization).labelSid
+		end
+
 		local s_Ping = "–"
 
 		if self.m_PingTable[player.name] ~= nil and self.m_PingTable[player.name] >= 0 and self.m_PingTable[player.name] < 999 then
@@ -251,9 +258,9 @@ function Scoreboard:UpdateUI(p_Player)
 		local s_SendThis2 = {}
 
 		if self.m_ShowEnemyCorpses == true then
-			s_SendThis2 = {index, player.name, player.kills, player.deaths, player.score, player.alive, s_Ping}
+			s_SendThis2 = {index, player.name, player.kills, player.deaths, player.score, player.alive, s_Ping, s_Kit, player.squadId}
 		else
-			s_SendThis2 = {index, player.name, player.kills, player.deaths, player.score, true, s_Ping}
+			s_SendThis2 = {index, player.name, player.kills, player.deaths, player.score, true, s_Ping, s_Kit, player.squadId}
 		end
 
 		WebUI:ExecuteJS(string.format("updateScoreboardBody2(%s)", json.encode(s_SendThis2)))

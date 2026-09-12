@@ -6,7 +6,7 @@ local m_Scoreboard = require('Scoreboard')
 
 function ZoomLevel:__init()
 	-- Client Settings
-	self.m_DefaultBase = nil -- this one is broken
+	self.m_DefaultBase = nil
 	self.m_10_0xZoom = nil
 	self.m_10xENVG = nil
 	self.m_12_0xZoom = nil
@@ -59,6 +59,7 @@ function ZoomLevel:__init()
 	self.m_FastIronSightsLookSpeedMultiplier = nil
 	self.m_DefaultIronSightsFieldOfView = nil
 	self.m_DefaultIronSightsLookSpeedMultiplier = nil
+	self.m_DefaultBaseFieldOfView = nil
 
 	Events:Subscribe('WebUI:GetMouseSensitivity', self, self.OnWebUIGetMouseSensitivity)
 	Events:Subscribe('WebUI:SetMouseSensitivity', self, self.OnWebUISetMouseSensitivity)
@@ -69,6 +70,11 @@ function ZoomLevel:__init()
 	Events:Subscribe('WebUI:SetFieldOfView', self, self.OnWebUISetFieldOfView)
 	Events:Subscribe('WebUI:ResetFieldOfView', self, self.OnWebUIResetFieldOfView)
 
+	Events:Subscribe('Level:Destroy', self, self.OnLevelDestroy)
+	Events:Subscribe('Level:Loaded', self, self.OnLevelLoadedSettings)
+	Events:Subscribe('Extension:Loaded', self, self.OnExtensionLoadedSettings)
+
+	self:DeclarePersistentSettings()
 	self:RegisterResourceManagerCallbacks()
 end
 
@@ -84,6 +90,7 @@ end
 
 function ZoomLevel:OnWebUISetMouseSensitivity(mouseSensitivity)
 	InputManager:SetMouseSensitivity(tonumber(mouseSensitivity))
+	self:PersistSensBase(tonumber(mouseSensitivity))
 end
 
 function ZoomLevel:OnWebUIGetMouseSensitivityMultipliers()
@@ -92,59 +99,60 @@ function ZoomLevel:OnWebUIGetMouseSensitivityMultipliers()
 	end
 
 	local s_Args = {
-		self.m_DefaultIronSights.lookSpeedMultiplier,
-		self.m_2_0xZoom.lookSpeedMultiplier,
-		self.m_3_4xZoom.lookSpeedMultiplier,
-		self.m_4_0xZoom.lookSpeedMultiplier,
-		self.m_6_0xZoom.lookSpeedMultiplier,
-		self.m_7_0xZoom.lookSpeedMultiplier,
-		self.m_8_0xZoom.lookSpeedMultiplier,
-		self.m_10_0xZoom.lookSpeedMultiplier,
-		self.m_12_0xZoom.lookSpeedMultiplier,
-		self.m_20xZoom.lookSpeedMultiplier
+		self:GetLookSpeed('m_DefaultIronSights', 0.5),
+		self:GetLookSpeed('m_2_0xZoom', 0.4),
+		self:GetLookSpeed('m_3_4xZoom', 0.3),
+		self:GetLookSpeed('m_4_0xZoom', 0.25),
+		self:GetLookSpeed('m_6_0xZoom', 0.2),
+		self:GetLookSpeed('m_7_0xZoom', 0.18),
+		self:GetLookSpeed('m_8_0xZoom', 0.15),
+		self:GetLookSpeed('m_10_0xZoom', 0.13),
+		self:GetLookSpeed('m_12_0xZoom', 0.11),
+		self:GetLookSpeed('m_20xZoom', 0.08)
 	}
 	WebUI:ExecuteJS(string.format("getMouseSensitivityMultipliers(%s)", json.encode(s_Args)))
 end
 
 function ZoomLevel:OnWebUISetMouseSensitivityMultipliers(p_Args)
 	p_Args = json.decode(p_Args)
-	self.m_DefaultIronSights.lookSpeedMultiplier = tonumber(p_Args[1]) -- kobra rds and none and igla
-	self.m_FastIronSights.lookSpeedMultiplier = tonumber(p_Args[1]) -- pistols and small weapons like F2000, pdws and shotguns
-	self.m_Fast_2_0xZoom.lookSpeedMultiplier = tonumber(p_Args[2]) -- holo of smaller weapons like F2000, pdws and shotguns
-	self.m_DefaultATSights.lookSpeedMultiplier = tonumber(p_Args[1]) -- stinger and javelin only
-	self.m_1xENVG.lookSpeedMultiplier = tonumber(p_Args[1]) -- IRNV scope
-	self.m_2_0xZoom.lookSpeedMultiplier = tonumber(p_Args[2]) -- holo, pkas
-	self.m_3_4xZoom.lookSpeedMultiplier = tonumber(p_Args[3]) -- pka, m145 3.4
-	self.m_4_0xZoom.lookSpeedMultiplier = tonumber(p_Args[4]) -- acog, pso 4.0
-	self.m_6_0xZoom.lookSpeedMultiplier = tonumber(p_Args[5]) -- Rifle Scope 6.0
-	self.m_6xENVG.lookSpeedMultiplier = tonumber(p_Args[5]) -- SVD SinglePlayer -- better just remove
-	self.m_7_0xZoom.lookSpeedMultiplier = tonumber(p_Args[6]) -- PKS-07
-	self.m_8_0xZoom.lookSpeedMultiplier = tonumber(p_Args[7]) -- Rifle Scope 8.0
-	self.m_10_0xZoom.lookSpeedMultiplier = tonumber(p_Args[8]) -- Ballistic Scope 12.0 -- small weapons like F2000 --wtf its actually 10x haha
-	self.m_10xENVG.lookSpeedMultiplier = tonumber(p_Args[8]) -- SP M40 and M82
-	self.m_12_0xZoom.lookSpeedMultiplier = tonumber(p_Args[9]) -- Ballistic Scope 12.0
-	self.m_20xZoom.lookSpeedMultiplier = tonumber(p_Args[10]) -- Ballistic Scope 20.0 only L96
-	self.m_20xENVG_COOP.lookSpeedMultiplier = tonumber(p_Args[10]) -- mk11 coop
+	self:PersistSens(p_Args)
+	self:ApplyLookSpeed('m_DefaultIronSights', tonumber(p_Args[1])) -- kobra rds and none and igla
+	self:ApplyLookSpeed('m_FastIronSights', tonumber(p_Args[1])) -- pistols and small weapons like F2000, pdws and shotguns
+	self:ApplyLookSpeed('m_Fast_2_0xZoom', tonumber(p_Args[2])) -- holo of smaller weapons like F2000, pdws and shotguns
+	self:ApplyLookSpeed('m_DefaultATSights', tonumber(p_Args[1])) -- stinger and javelin only
+	self:ApplyLookSpeed('m_1xENVG', tonumber(p_Args[1])) -- IRNV scope
+	self:ApplyLookSpeed('m_2_0xZoom', tonumber(p_Args[2])) -- holo, pkas
+	self:ApplyLookSpeed('m_3_4xZoom', tonumber(p_Args[3])) -- pka, m145 3.4
+	self:ApplyLookSpeed('m_4_0xZoom', tonumber(p_Args[4])) -- acog, pso 4.0
+	self:ApplyLookSpeed('m_6_0xZoom', tonumber(p_Args[5])) -- Rifle Scope 6.0
+	self:ApplyLookSpeed('m_6xENVG', tonumber(p_Args[5])) -- SVD SinglePlayer -- better just remove
+	self:ApplyLookSpeed('m_7_0xZoom', tonumber(p_Args[6])) -- PKS-07
+	self:ApplyLookSpeed('m_8_0xZoom', tonumber(p_Args[7])) -- Rifle Scope 8.0
+	self:ApplyLookSpeed('m_10_0xZoom', tonumber(p_Args[8])) -- Ballistic Scope 12.0 -- small weapons like F2000 --wtf its actually 10x haha
+	self:ApplyLookSpeed('m_10xENVG', tonumber(p_Args[8])) -- SP M40 and M82
+	self:ApplyLookSpeed('m_12_0xZoom', tonumber(p_Args[9])) -- Ballistic Scope 12.0
+	self:ApplyLookSpeed('m_20xZoom', tonumber(p_Args[10])) -- Ballistic Scope 20.0 only L96
+	self:ApplyLookSpeed('m_20xENVG_COOP', tonumber(p_Args[10])) -- mk11 coop
 end
 
 function ZoomLevel:OnWebUIResetMouseSensitivityMultipliers()
-	self.m_DefaultIronSights.lookSpeedMultiplier = 0.5 -- 1
-	self.m_FastIronSights.lookSpeedMultiplier = 0.5 -- 1
-	self.m_Fast_2_0xZoom.lookSpeedMultiplier = 0.3199999 -- 3
-	self.m_DefaultATSights.lookSpeedMultiplier = 0.5 -- 1
-	self.m_1xENVG.lookSpeedMultiplier = 0.5 -- 1
-	self.m_2_0xZoom.lookSpeedMultiplier = 0.3199999 -- 3
-	self.m_3_4xZoom.lookSpeedMultiplier = 0.36 -- 2
-	self.m_4_0xZoom.lookSpeedMultiplier = 0.31 -- 4
-	self.m_6_0xZoom.lookSpeedMultiplier = 0.2099999 -- 5
-	self.m_6xENVG.lookSpeedMultiplier = 0.2099999 -- 5
-	self.m_7_0xZoom.lookSpeedMultiplier = 0.2099999 -- 5
-	self.m_8_0xZoom.lookSpeedMultiplier = 0.1599999 -- 6
-	self.m_10_0xZoom.lookSpeedMultiplier = 0.1299999 -- 7
-	self.m_10xENVG.lookSpeedMultiplier = 0.1299999 -- 7
-	self.m_12_0xZoom.lookSpeedMultiplier = 0.1099999 -- 8
-	self.m_20xZoom.lookSpeedMultiplier = 0.0799999 -- 9
-	self.m_20xENVG_COOP.lookSpeedMultiplier = 0.0799999 -- 9
+	self:ApplyLookSpeed('m_DefaultIronSights', 0.5) -- 1
+	self:ApplyLookSpeed('m_FastIronSights', 0.5) -- 1
+	self:ApplyLookSpeed('m_Fast_2_0xZoom', 0.3199999) -- 3
+	self:ApplyLookSpeed('m_DefaultATSights', 0.5) -- 1
+	self:ApplyLookSpeed('m_1xENVG', 0.5) -- 1
+	self:ApplyLookSpeed('m_2_0xZoom', 0.3199999) -- 3
+	self:ApplyLookSpeed('m_3_4xZoom', 0.36) -- 2
+	self:ApplyLookSpeed('m_4_0xZoom', 0.31) -- 4
+	self:ApplyLookSpeed('m_6_0xZoom', 0.2099999) -- 5
+	self:ApplyLookSpeed('m_6xENVG', 0.2099999) -- 5
+	self:ApplyLookSpeed('m_7_0xZoom', 0.2099999) -- 5
+	self:ApplyLookSpeed('m_8_0xZoom', 0.1599999) -- 6
+	self:ApplyLookSpeed('m_10_0xZoom', 0.1299999) -- 7
+	self:ApplyLookSpeed('m_10xENVG', 0.1299999) -- 7
+	self:ApplyLookSpeed('m_12_0xZoom', 0.1099999) -- 8
+	self:ApplyLookSpeed('m_20xZoom', 0.0799999) -- 9
+	self:ApplyLookSpeed('m_20xENVG_COOP', 0.0799999) -- 9
 
 	self:OnWebUIGetMouseSensitivityMultipliers()
 end
@@ -155,62 +163,63 @@ function ZoomLevel:OnWebUIGetFieldOfView()
 	end
 
 	local s_Args = {
-		VDEGtoHDEG(self.m_DefaultBase.fieldOfView),
-		VDEGtoHDEG(self.m_DefaultIronSights.fieldOfView),
-		VDEGtoHDEG(self.m_2_0xZoom.fieldOfView),
-		VDEGtoHDEG(self.m_3_4xZoom.fieldOfView),
-		VDEGtoHDEG(self.m_4_0xZoom.fieldOfView),
-		VDEGtoHDEG(self.m_6_0xZoom.fieldOfView),
-		VDEGtoHDEG(self.m_7_0xZoom.fieldOfView),
-		VDEGtoHDEG(self.m_8_0xZoom.fieldOfView),
-		VDEGtoHDEG(self.m_10_0xZoom.fieldOfView),
-		VDEGtoHDEG(self.m_12_0xZoom.fieldOfView),
-		VDEGtoHDEG(self.m_20xZoom.fieldOfView)
+		VDEGtoHDEG(self:GetFov('m_DefaultBase', 55)),
+		VDEGtoHDEG(self:GetFov('m_DefaultIronSights', 40)),
+		VDEGtoHDEG(self:GetFov('m_2_0xZoom', 32)),
+		VDEGtoHDEG(self:GetFov('m_3_4xZoom', 20)),
+		VDEGtoHDEG(self:GetFov('m_4_0xZoom', 17.2)),
+		VDEGtoHDEG(self:GetFov('m_6_0xZoom', 11.6)),
+		VDEGtoHDEG(self:GetFov('m_7_0xZoom', 9.899999)),
+		VDEGtoHDEG(self:GetFov('m_8_0xZoom', 8.699999)),
+		VDEGtoHDEG(self:GetFov('m_10_0xZoom', 7)),
+		VDEGtoHDEG(self:GetFov('m_12_0xZoom', 5.8)),
+		VDEGtoHDEG(self:GetFov('m_20xZoom', 3.5))
 	}
 	WebUI:ExecuteJS(string.format("getFieldOfView(%s)", json.encode(s_Args)))
 end
 
 function ZoomLevel:OnWebUISetFieldOfView(p_Args)
 	p_Args = json.decode(p_Args)
-	self.m_DefaultBase.fieldOfView = HDEGtoVDEG(tonumber(p_Args[1]))
-	self.m_DefaultIronSights.fieldOfView = HDEGtoVDEG(tonumber(p_Args[2])) -- kobra rds and none and igla
-	self.m_FastIronSights.fieldOfView = HDEGtoVDEG(tonumber(p_Args[2])) -- pistols and small weapons like F2000, pdws and shotguns
-	self.m_Fast_2_0xZoom.fieldOfView = HDEGtoVDEG(tonumber(p_Args[3])) -- holo of smaller weapons like F2000, pdws and shotguns
-	self.m_DefaultATSights.fieldOfView = HDEGtoVDEG(tonumber(p_Args[2])) -- stinger and javelin only
-	self.m_1xENVG.fieldOfView = HDEGtoVDEG(tonumber(p_Args[2])) -- IRNV scope
-	self.m_2_0xZoom.fieldOfView = HDEGtoVDEG(tonumber(p_Args[3])) -- holo, pkas
-	self.m_3_4xZoom.fieldOfView = HDEGtoVDEG(tonumber(p_Args[4])) -- pka, m145 3.4
-	self.m_4_0xZoom.fieldOfView = HDEGtoVDEG(tonumber(p_Args[5])) -- acog, pso 4.0
-	self.m_6_0xZoom.fieldOfView = HDEGtoVDEG(tonumber(p_Args[6])) -- Rifle Scope 6.0
-	self.m_6xENVG.fieldOfView = HDEGtoVDEG(tonumber(p_Args[6])) -- SVD SinglePlayer -- better just remove
-	self.m_7_0xZoom.fieldOfView = HDEGtoVDEG(tonumber(p_Args[7])) -- PKS-07
-	self.m_8_0xZoom.fieldOfView = HDEGtoVDEG(tonumber(p_Args[8])) -- Rifle Scope 8.0
-	self.m_10_0xZoom.fieldOfView = HDEGtoVDEG(tonumber(p_Args[9])) -- Ballistic Scope 12.0 -- small weapons like F2000 --wtf its actually 10x haha
-	self.m_10xENVG.fieldOfView = HDEGtoVDEG(tonumber(p_Args[9])) -- SP M40 and M82
-	self.m_12_0xZoom.fieldOfView = HDEGtoVDEG(tonumber(p_Args[10])) -- Ballistic Scope 12.0
-	self.m_20xZoom.fieldOfView = HDEGtoVDEG(tonumber(p_Args[11])) -- Ballistic Scope 20.0 only L96
-	self.m_20xENVG_COOP.fieldOfView = HDEGtoVDEG(tonumber(p_Args[11])) -- mk11 coop
+	self:PersistFov(p_Args)
+	self:ApplyFov('m_DefaultBase', HDEGtoVDEG(tonumber(p_Args[1])))
+	self:ApplyFov('m_DefaultIronSights', HDEGtoVDEG(tonumber(p_Args[2]))) -- kobra rds and none and igla
+	self:ApplyFov('m_FastIronSights', HDEGtoVDEG(tonumber(p_Args[2]))) -- pistols and small weapons like F2000, pdws and shotguns
+	self:ApplyFov('m_Fast_2_0xZoom', HDEGtoVDEG(tonumber(p_Args[3]))) -- holo of smaller weapons like F2000, pdws and shotguns
+	self:ApplyFov('m_DefaultATSights', HDEGtoVDEG(tonumber(p_Args[2]))) -- stinger and javelin only
+	self:ApplyFov('m_1xENVG', HDEGtoVDEG(tonumber(p_Args[2]))) -- IRNV scope
+	self:ApplyFov('m_2_0xZoom', HDEGtoVDEG(tonumber(p_Args[3]))) -- holo, pkas
+	self:ApplyFov('m_3_4xZoom', HDEGtoVDEG(tonumber(p_Args[4]))) -- pka, m145 3.4
+	self:ApplyFov('m_4_0xZoom', HDEGtoVDEG(tonumber(p_Args[5]))) -- acog, pso 4.0
+	self:ApplyFov('m_6_0xZoom', HDEGtoVDEG(tonumber(p_Args[6]))) -- Rifle Scope 6.0
+	self:ApplyFov('m_6xENVG', HDEGtoVDEG(tonumber(p_Args[6]))) -- SVD SinglePlayer -- better just remove
+	self:ApplyFov('m_7_0xZoom', HDEGtoVDEG(tonumber(p_Args[7]))) -- PKS-07
+	self:ApplyFov('m_8_0xZoom', HDEGtoVDEG(tonumber(p_Args[8]))) -- Rifle Scope 8.0
+	self:ApplyFov('m_10_0xZoom', HDEGtoVDEG(tonumber(p_Args[9]))) -- Ballistic Scope 12.0 -- small weapons like F2000 --wtf its actually 10x haha
+	self:ApplyFov('m_10xENVG', HDEGtoVDEG(tonumber(p_Args[9]))) -- SP M40 and M82
+	self:ApplyFov('m_12_0xZoom', HDEGtoVDEG(tonumber(p_Args[10]))) -- Ballistic Scope 12.0
+	self:ApplyFov('m_20xZoom', HDEGtoVDEG(tonumber(p_Args[11]))) -- Ballistic Scope 20.0 only L96
+	self:ApplyFov('m_20xENVG_COOP', HDEGtoVDEG(tonumber(p_Args[11]))) -- mk11 coop
 end
 
 function ZoomLevel:OnWebUIResetFieldOfView()
-	self.m_DefaultBase.fieldOfView = 55 -- 1
-	self.m_DefaultIronSights.fieldOfView = 40 -- 1
-	self.m_FastIronSights.fieldOfView = 40 -- 1
-	self.m_Fast_2_0xZoom.fieldOfView = 32 -- 3
-	self.m_DefaultATSights.fieldOfView = 40 -- 1
-	self.m_1xENVG.fieldOfView = 40 -- 1
-	self.m_2_0xZoom.fieldOfView = 32 -- 3
-	self.m_3_4xZoom.fieldOfView = 20 -- 2
-	self.m_4_0xZoom.fieldOfView = 17.2 -- 4
-	self.m_6_0xZoom.fieldOfView = 11.6 -- 5
-	self.m_6xENVG.fieldOfView = 11.6 -- 5
-	self.m_7_0xZoom.fieldOfView = 9.899999 -- 5
-	self.m_8_0xZoom.fieldOfView = 8.699999 -- 6
-	self.m_10_0xZoom.fieldOfView = 7 -- 7
-	self.m_10xENVG.fieldOfView = 7 -- 7
-	self.m_12_0xZoom.fieldOfView = 5.8 -- 8
-	self.m_20xZoom.fieldOfView = 3.5 -- 9
-	self.m_20xENVG_COOP.fieldOfView = 3.5 -- 9
+	self:ApplyFov('m_DefaultBase', 55) -- 1
+	self:ApplyFov('m_DefaultIronSights', 40) -- 1
+	self:ApplyFov('m_FastIronSights', 40) -- 1
+	self:ApplyFov('m_Fast_2_0xZoom', 32) -- 3
+	self:ApplyFov('m_DefaultATSights', 40) -- 1
+	self:ApplyFov('m_1xENVG', 40) -- 1
+	self:ApplyFov('m_2_0xZoom', 32) -- 3
+	self:ApplyFov('m_3_4xZoom', 20) -- 2
+	self:ApplyFov('m_4_0xZoom', 17.2) -- 4
+	self:ApplyFov('m_6_0xZoom', 11.6) -- 5
+	self:ApplyFov('m_6xENVG', 11.6) -- 5
+	self:ApplyFov('m_7_0xZoom', 9.899999) -- 5
+	self:ApplyFov('m_8_0xZoom', 8.699999) -- 6
+	self:ApplyFov('m_10_0xZoom', 7) -- 7
+	self:ApplyFov('m_10xENVG', 7) -- 7
+	self:ApplyFov('m_12_0xZoom', 5.8) -- 8
+	self:ApplyFov('m_20xZoom', 3.5) -- 9
+	self:ApplyFov('m_20xENVG_COOP', 3.5) -- 9
 
 	self:OnWebUIGetFieldOfView()
 end
@@ -232,6 +241,61 @@ function HDEGtoVDEG(p_Arg)
 
 	return endFov
 end
+
+-- Region Nil-safe zoom level access
+-- The m_* instances only exist while a level's ZoomLevelData is loaded. The WebUI
+-- can ask for these values at any time (loading screen, menu, after Level:Destroy),
+-- so every read/write goes through these helpers instead of indexing directly.
+function ZoomLevel:GetFov(p_Name, p_Default)
+	local s_Instance = self[p_Name]
+
+	if s_Instance ~= nil then
+		return s_Instance.fieldOfView
+	end
+
+	local s_Cached = self[p_Name .. 'FieldOfView']
+
+	if s_Cached ~= nil then
+		return s_Cached
+	end
+
+	return p_Default
+end
+
+function ZoomLevel:GetLookSpeed(p_Name, p_Default)
+	local s_Instance = self[p_Name]
+
+	if s_Instance ~= nil then
+		return s_Instance.lookSpeedMultiplier
+	end
+
+	local s_Cached = self[p_Name .. 'LookSpeedMultiplier']
+
+	if s_Cached ~= nil then
+		return s_Cached
+	end
+
+	return p_Default
+end
+
+-- Always cache the value so it survives a level change and gets re-applied by the
+-- instance load handler, then write it through only if the instance is loaded.
+function ZoomLevel:ApplyFov(p_Name, p_Value)
+	self[p_Name .. 'FieldOfView'] = p_Value
+
+	if self[p_Name] ~= nil then
+		self[p_Name].fieldOfView = p_Value
+	end
+end
+
+function ZoomLevel:ApplyLookSpeed(p_Name, p_Value)
+	self[p_Name .. 'LookSpeedMultiplier'] = p_Value
+
+	if self[p_Name] ~= nil then
+		self[p_Name].lookSpeedMultiplier = p_Value
+	end
+end
+-- Endregion
 
 function ZoomLevel:RegisterResourceManagerCallbacks()
 	ResourceManager:RegisterInstanceLoadHandler(Guid("895050F3-B0D1-4F83-A57B-CCFA3EB0B31D", "D"), Guid("5C006FDF-FA1D-4E29-8E21-2ECAB83AC01C", "D"), function(p_Instance)
@@ -476,6 +540,10 @@ function ZoomLevel:RegisterResourceManagerCallbacks()
 		p_Instance = ZoomLevelData(p_Instance)
 		p_Instance:MakeWritable()
 		self.m_DefaultBase = p_Instance -- use ClientUtils:SetFieldOfView() when available
+
+		if self.m_DefaultBaseFieldOfView ~= nil then
+			self.m_DefaultBase.fieldOfView = self.m_DefaultBaseFieldOfView
+		end
 	end)
 end
 
@@ -565,7 +633,11 @@ function ZoomLevel:OnLevelDestroy()
 		self.m_DefaultIronSightsLookSpeedMultiplier = self.m_DefaultIronSights.lookSpeedMultiplier
 	end
 
-	self.m_DefaultBase = nil -- this one is broken
+	if self.m_DefaultBase ~= nil then
+		self.m_DefaultBaseFieldOfView = self.m_DefaultBase.fieldOfView
+	end
+
+	self.m_DefaultBase = nil
 	self.m_10_0xZoom = nil
 	self.m_10xENVG = nil
 	self.m_12_0xZoom = nil
@@ -584,5 +656,84 @@ function ZoomLevel:OnLevelDestroy()
 	self.m_FastIronSights = nil
 	self.m_DefaultIronSights = nil
 end
+
+
+
+
+
+-- Region Client SettingsManager persistence (this PC / VU profile — not server SQL)
+-- Official API: SettingsManager:DeclareString + ModSetting.value
+-- WebUI:SetLocalSetting does NOT exist in VU docs.
+
+function ZoomLevel:DeclarePersistentSettings()
+	local s_Opts = SettingOptions()
+	s_Opts.showInUi = false
+	s_Opts.displayName = 'BIA Look'
+
+	-- JSON blobs; max length large enough for full FOV/sens arrays
+	self.m_SettingFov = SettingsManager:DeclareString('bia_look_fov', '', 0, 8192, s_Opts)
+	self.m_SettingSens = SettingsManager:DeclareString('bia_look_sens', '', 0, 4096, s_Opts)
+	self.m_SettingSensBase = SettingsManager:DeclareString('bia_look_sensBase', '', 0, 64, s_Opts)
+end
+
+function ZoomLevel:PersistFov(p_Args)
+	if self.m_SettingFov == nil or p_Args == nil then
+		return
+	end
+	local s_Json = json.encode(p_Args)
+	if s_Json then
+		self.m_SettingFov.value = s_Json
+	end
+end
+
+function ZoomLevel:PersistSens(p_Args)
+	if self.m_SettingSens == nil or p_Args == nil then
+		return
+	end
+	local s_Json = json.encode(p_Args)
+	if s_Json then
+		self.m_SettingSens.value = s_Json
+	end
+end
+
+function ZoomLevel:PersistSensBase(p_Value)
+	if self.m_SettingSensBase == nil or p_Value == nil then
+		return
+	end
+	self.m_SettingSensBase.value = tostring(p_Value)
+end
+
+function ZoomLevel:LoadPersistentSettings()
+	if self.m_SettingFov == nil then
+		return
+	end
+
+	local s_Fov = self.m_SettingFov.value
+	if type(s_Fov) == 'string' and s_Fov ~= '' then
+		-- ApplyFov caches + writes instances if loaded
+		self:OnWebUISetFieldOfView(s_Fov)
+	end
+
+	local s_Sens = self.m_SettingSens.value
+	if type(s_Sens) == 'string' and s_Sens ~= '' then
+		self:OnWebUISetMouseSensitivityMultipliers(s_Sens)
+	end
+
+	local s_Base = self.m_SettingSensBase.value
+	if type(s_Base) == 'string' and s_Base ~= '' then
+		self:OnWebUISetMouseSensitivity(s_Base)
+	end
+end
+
+function ZoomLevel:OnExtensionLoadedSettings()
+	self:LoadPersistentSettings()
+end
+
+function ZoomLevel:OnLevelLoadedSettings()
+	-- Re-apply after ZoomLevelData instances bind
+	self:LoadPersistentSettings()
+end
+-- Endregion
+
 
 return ZoomLevel()

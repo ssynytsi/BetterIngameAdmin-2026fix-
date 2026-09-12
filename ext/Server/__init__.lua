@@ -19,6 +19,7 @@ local m_ServerOwner = require('ServerOwner')
 require('Squad')
 ---@type Voting
 local m_Voting = require('Voting')
+require('BiaManager')
 
 function BetterIngameAdmin:__init()
 	Events:Subscribe('Extension:Loaded', self, self.OnExtensionLoaded)
