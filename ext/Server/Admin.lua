@@ -10,6 +10,22 @@ local m_GeneralSettings = require('GeneralSettings')
 ---@type ServerOwner
 local m_ServerOwner = require('ServerOwner')
 
+local NO_RIGHTS = "Sorry, you are no admin or at least don't have the required abilities to do this action."
+
+local function Popup(p_Player, p_Title, p_Text)
+	NetEvents:SendTo('PopupResponse', p_Player, { p_Title, p_Text })
+end
+
+local function HasText(p_Value)
+	return p_Value ~= nil and p_Value ~= ""
+end
+
+-- Console + persistent admin log (BiaManager listens to BIA:Log)
+local function Log(p_Admin, p_Text)
+	print("ADMIN - " .. p_Text)
+	Events:Dispatch('BIA:Log', p_Admin, p_Text)
+end
+
 function Admin:__init()
 	-- actions for players
 	NetEvents:Subscribe('MovePlayer', self, self.OnMovePlayer)
@@ -42,535 +58,398 @@ function Admin:__init()
 	NetEvents:Subscribe('SaveModSettings', self, self.OnSaveModSettings)
 end
 
--- actions for players
+-- Region helpers
+
+-- p_Check is a GameAdmin method name, e.g. 'CanKickPlayers'. The server owner
+-- is not in gameAdmin's list, so the owner check has to come first.
+function Admin:Allowed(p_Player, p_Check, p_Tag, p_Silent)
+	if m_ServerOwner:IsOwner(p_Player.name) then
+		return true
+	end
+
+	local s_Fn = m_GameAdmin[p_Check]
+
+	if s_Fn ~= nil and s_Fn(m_GameAdmin, p_Player.name) then
+		return true
+	end
+
+	if not p_Silent then
+		Popup(p_Player, "Error.", NO_RIGHTS)
+	end
+
+	print("ADMIN " .. p_Tag .. " - Error Player " .. p_Player.name .. " is no admin")
+	return false
+end
+
+-- Admins and the owner are protected from other admins. The owner can still
+-- act on admins (otherwise a rogue admin could never be kicked in-game).
+function Admin:IsProtected(p_Player, p_TargetName, p_Tag)
+	if m_ServerOwner:IsOwner(p_TargetName) then
+		Popup(p_Player, "Error.", "Sorry, that player is protected.")
+		print("ADMIN " .. p_Tag .. " - Error Player " .. tostring(p_TargetName) .. " is protected")
+		return true
+	end
+
+	if m_GameAdmin:IsAdmin(p_TargetName) and not m_ServerOwner:IsOwner(p_Player.name) then
+		Popup(p_Player, "Error.", "Sorry, that player is protected.")
+		print("ADMIN " .. p_Tag .. " - Error Player " .. tostring(p_TargetName) .. " is protected")
+		return true
+	end
+
+	return false
+end
+
+function Admin:FindTarget(p_Player, p_Name, p_Tag)
+	local s_Target = PlayerManager:GetPlayerByName(tostring(p_Name))
+
+	if s_Target == nil then
+		Popup(p_Player, "Error.", "Sorry, we couldn't find the player.")
+		print("ADMIN " .. p_Tag .. " - Error Admin " .. p_Player.name .. " targeted " .. tostring(p_Name) .. " but we couldn't find him.")
+	end
+
+	return s_Target
+end
+
+-- Endregion
+
+-- Region actions for players
+
 function Admin:OnMovePlayer(p_Player, p_Args)
-	local s_Messages = {}
-
-	if not m_GameAdmin:CanMovePlayers(p_Player.name) and not m_ServerOwner:IsOwner(p_Player.name) then
-		-- That guy is no admin or doesn't have that ability. That guy is also not the server owner.
-		s_Messages[1] = "Error."
-		s_Messages[2] = "Sorry, you are no admin or at least don't have the required abilitities to do this action."
-		NetEvents:SendTo('PopupResponse', p_Player, s_Messages)
-		print("ADMIN MOVE - Error Player " .. p_Player.name .. " is no admin")
+	if not self:Allowed(p_Player, 'CanMovePlayers', 'MOVE') then
 		return
 	end
 
-	local s_TargetPlayer = PlayerManager:GetPlayerByName(p_Args[1])
+	local s_Target = self:FindTarget(p_Player, p_Args[1], 'MOVE')
 
-	if s_TargetPlayer == nil then
-		-- Player not found.
-		s_Messages = {}
-		s_Messages[1] = "Error."
-		s_Messages[2] = "Sorry, we couldn't find the player."
-		NetEvents:SendTo('PopupResponse', p_Player, s_Messages)
-		print("ADMIN MOVE - Error Admin " .. p_Player.name .. " tried to move Player " .. p_Args[1] .. " but we couldn't find him.")
+	if s_Target == nil then
 		return
 	end
 
-	RCON:SendCommand('admin.movePlayer', {s_TargetPlayer.name, p_Args[2], p_Args[3], "true"})
-	RCON:SendCommand('squad.private', {tostring(s_TargetPlayer.teamId), tostring(s_TargetPlayer.squadId), "false"})
+	RCON:SendCommand('admin.movePlayer', { s_Target.name, tostring(p_Args[2]), tostring(p_Args[3]), "true" })
+	RCON:SendCommand('squad.private', { tostring(s_Target.teamId), tostring(s_Target.squadId), "false" })
 
-	if p_Args[4] ~= nil and p_Args[4] ~= "" then
-		s_Messages = {}
-		s_Messages[1] = "Moved by admin."
-		s_Messages[2] = "You got moved by an admin. Reason: ".. p_Args[4]
-		NetEvents:SendTo('PopupResponse', s_TargetPlayer, s_Messages)
-		s_Messages = {}
-		s_Messages[1] = "Move confirmed."
-		s_Messages[2] = "You moved the player ".. s_TargetPlayer.name .." successfully for Reason: ".. p_Args[4]
-		NetEvents:SendTo('PopupResponse', p_Player, s_Messages)
-		print("ADMIN MOVE - Admin " .. p_Player.name .. " moved Player " .. s_TargetPlayer.name .. " to the team " .. p_Args[2] .. " and the squad " .. p_Args[3] .. ". Reason: " .. p_Args[4])
-	else
-		-- send confirm to player and message to target
-		s_Messages = {}
-		s_Messages[1] = "Moved by admin."
-		s_Messages[2] = "You got moved by an admin."
-		NetEvents:SendTo('PopupResponse', s_TargetPlayer, s_Messages)
-		s_Messages = {}
-		s_Messages[1] = "Move confirmed."
-		s_Messages[2] = "You moved the player ".. s_TargetPlayer.name .." successfully."
-		NetEvents:SendTo('PopupResponse', p_Player, s_Messages)
-		print("ADMIN MOVE - Admin " .. p_Player.name .. " moved Player " .. s_TargetPlayer.name .. " to the team " .. p_Args[2] .. " and the squad " .. p_Args[3] .. ".")
-	end
+	local s_Reason = HasText(p_Args[4]) and (" Reason: " .. p_Args[4]) or ""
+	Popup(s_Target, "Moved by admin.", "You got moved by an admin." .. s_Reason)
+	Popup(p_Player, "Move confirmed.", "You moved the player " .. s_Target.name .. " successfully." .. s_Reason)
+	Log(p_Player.name, p_Player.name .. " moved " .. s_Target.name .. " to team " .. tostring(p_Args[2]) .. " squad " .. tostring(p_Args[3]) .. "." .. s_Reason)
 end
 
 function Admin:OnKillPlayer(p_Player, p_Args)
-	local s_Messages = {}
-
-	if not m_GameAdmin:CanKillPlayers(p_Player.name) and not m_ServerOwner:IsOwner(p_Player.name) then
-		-- That guy is no admin or doesn't have that ability. That guy is also not the server owner.
-		s_Messages[1] = "Error."
-		s_Messages[2] = "Sorry, you are no admin or at least don't have the required abilitities to do this action."
-		NetEvents:SendTo('PopupResponse', p_Player, s_Messages)
-		print("ADMIN KILL - Error Player " .. p_Player.name .. " is no admin")
+	if not self:Allowed(p_Player, 'CanKillPlayers', 'KILL') then
 		return
 	end
 
-	local s_TargetPlayer = PlayerManager:GetPlayerByName(p_Args[1])
+	local s_Target = self:FindTarget(p_Player, p_Args[1], 'KILL')
 
-	if s_TargetPlayer == nil then
-		-- Player not found.
-		s_Messages = {}
-		s_Messages[1] = "Error."
-		s_Messages[2] = "Sorry, we couldn't find the player."
-		NetEvents:SendTo('PopupResponse', p_Player, s_Messages)
-		print("ADMIN KILL - Error Admin " .. p_Player.name .. " tried to kill Player " .. p_Args[1] .. " but we couldn't find him.")
+	if s_Target == nil then
 		return
 	end
 
-	if s_TargetPlayer.alive == true then
-		RCON:SendCommand('admin.killPlayer', {s_TargetPlayer.name})
-		if p_Args[2] ~= nil then
-			RCON:SendCommand('admin.say', {"Reason for kill: "..p_Args[2], "player", s_TargetPlayer.name})
-			print("ADMIN KILL - Admin " .. p_Player.name .. " killed Player " .. s_TargetPlayer.name .. ". Reason: " .. p_Args[2])
-		else
-			print("ADMIN KILL - Admin " .. p_Player.name .. " killed Player " .. s_TargetPlayer.name .. ".")
-		end
-	elseif p_Player.corpse ~= nil and p_Player.corpse.isDead == false then
-		s_TargetPlayer.corpse:ForceDead()
-		if p_Args[2] ~= nil and p_Args[2] ~= "" then
-			RCON:SendCommand('admin.say', {"Reason for kill: "..p_Args[2], "player", s_TargetPlayer.name})
-			print("ADMIN KILL - Admin " .. p_Player.name .. " killed Player " .. s_TargetPlayer.name .. ". Reason: " .. p_Args[2])
-		else
-			print("ADMIN KILL - Admin " .. p_Player.name .. " killed Player " .. s_TargetPlayer.name .. ".")
-		end
+	if s_Target.alive == true then
+		RCON:SendCommand('admin.killPlayer', { s_Target.name })
+	elseif s_Target.corpse ~= nil and s_Target.corpse.isDead == false then
+		-- was p_Player.corpse (the ADMIN's corpse), so downed targets never got finished
+		s_Target.corpse:ForceDead()
 	else
-		-- TargetPlayer aready dead.
-		s_Messages[1] = "Error."
-		s_Messages[2] = "The player ".. s_TargetPlayer.name .." is already dead."
-		NetEvents:SendTo('PopupResponse', p_Player, s_Messages)
-		print("ADMIN KILL - Error Admin " .. p_Player.name .. " tried to kill Player " .. s_TargetPlayer.name .. " but he is already dead.")
+		Popup(p_Player, "Error.", "The player " .. s_Target.name .. " is already dead.")
+		return
 	end
+
+	local s_Reason = ""
+
+	if HasText(p_Args[2]) then
+		RCON:SendCommand('admin.say', { "Reason for kill: " .. p_Args[2], "player", s_Target.name })
+		s_Reason = " Reason: " .. p_Args[2]
+	end
+
+	Log(p_Player.name, p_Player.name .. " killed " .. s_Target.name .. "." .. s_Reason)
 end
 
 function Admin:OnKickPlayer(p_Player, p_Args)
-	local s_Messages = {}
-
-	if not m_GameAdmin:CanKickPlayers(p_Player.name) and not m_ServerOwner:IsOwner(p_Player.name) then
-		-- That guy is no admin or doesn't have that ability. That guy is also not the server owner.
-		s_Messages[1] = "Error."
-		s_Messages[2] = "Sorry, you are no admin or at least don't have the required abilitities to do this action."
-		NetEvents:SendTo('PopupResponse', p_Player, s_Messages)
-		print("ADMIN KICK - Error Player " .. p_Player.name .. " is no admin")
-		return
-	elseif m_GameAdmin:IsAdmin(p_Args[1]) or m_ServerOwner:IsOwner(p_Args[1]) then
-		s_Messages[1] = "Error."
-		s_Messages[2] = "Sorry, that player is protected."
-		NetEvents:SendTo('PopupResponse', p_Player, s_Messages)
-		print("ADMIN KICK - Error Player " .. p_Args[1] .. " is protected")
+	if not self:Allowed(p_Player, 'CanKickPlayers', 'KICK') or self:IsProtected(p_Player, p_Args[1], 'KICK') then
 		return
 	end
 
-	local s_TargetPlayer = PlayerManager:GetPlayerByName(p_Args[1])
+	local s_Target = self:FindTarget(p_Player, p_Args[1], 'KICK')
 
-	if s_TargetPlayer == nil then
-		-- Player not found.
-		s_Messages[1] = "Error."
-		s_Messages[2] = "Sorry, we couldn't find the player."
-		NetEvents:SendTo('PopupResponse', p_Player, s_Messages)
-		print("ADMIN KICK - Error Admin " .. p_Player.name .. " tried to kick Player " .. p_Args[1] .. " but we couldn't find him.")
+	if s_Target == nil then
 		return
 	end
 
-	if p_Args[2]~= nil and p_Args[2] ~= "" then
-		print("ADMIN KICK - Admin " .. p_Player.name .. " kicked Player " .. s_TargetPlayer.name .. ". Reason: " .. p_Args[2])
-		s_TargetPlayer:Kick(""..p_Args[2].." (".. p_Player.name..")")
+	local s_Name = s_Target.name
+
+	if HasText(p_Args[2]) then
+		s_Target:Kick(p_Args[2] .. " (" .. p_Player.name .. ")")
+		Log(p_Player.name, p_Player.name .. " kicked " .. s_Name .. ". Reason: " .. p_Args[2])
 	else
-		print("ADMIN KICK - Admin " .. p_Player.name .. " kicked Player " .. s_TargetPlayer.name .. ".")
-		s_TargetPlayer:Kick("Kicked by ".. p_Player.name.."")
+		s_Target:Kick("Kicked by " .. p_Player.name)
+		Log(p_Player.name, p_Player.name .. " kicked " .. s_Name .. ".")
 	end
 
-	s_Messages[1] = "Kick confirmed."
-	s_Messages[2] = "You kicked the player ".. s_TargetPlayer.name .." successfully."
-	NetEvents:SendTo('PopupResponse', p_Player, s_Messages)
+	Popup(p_Player, "Kick confirmed.", "You kicked the player " .. s_Name .. " successfully.")
 end
 
 function Admin:OnTBanPlayer(p_Player, p_Args)
-	local s_Messages = {}
-
-	if not m_GameAdmin:CanTemporaryBanPlayers(p_Player.name) and not m_ServerOwner:IsOwner(p_Player.name) then
-		-- That guy is no admin or doesn't have that ability. That guy is also not the server owner.
-		s_Messages[1] = "Error."
-		s_Messages[2] = "Sorry, you are no admin or at least don't have the required abilitities to do this action."
-		NetEvents:SendTo('PopupResponse', p_Player, s_Messages)
-		print("ADMIN TBAN - Error Player " .. p_Player.name .. " is no admin")
-		return
-	elseif m_GameAdmin:IsAdmin(p_Args[1]) or m_ServerOwner:IsOwner(p_Args[1]) then
-		s_Messages[1] = "Error."
-		s_Messages[2] = "Sorry, that player is protected."
-		NetEvents:SendTo('PopupResponse', p_Player, s_Messages)
-		print("ADMIN TBAN - Error Player " .. p_Args[1] .. " is protected")
+	if not self:Allowed(p_Player, 'CanTemporaryBanPlayers', 'TBAN') or self:IsProtected(p_Player, p_Args[1], 'TBAN') then
 		return
 	end
 
-	local s_TargetPlayer = PlayerManager:GetPlayerByName(p_Args[1])
+	local s_Target = self:FindTarget(p_Player, p_Args[1], 'TBAN')
 
-	if s_TargetPlayer == nil then
-		-- Player not found.
-		s_Messages[1] = "Error."
-		s_Messages[2] = "Sorry, we couldn't find the player."
-		NetEvents:SendTo('PopupResponse', p_Player, s_Messages)
-		print("ADMIN TBAN - Error Admin " .. p_Player.name .. " tried to temp. ban Player " .. p_Args[1] .. " but we couldn't find him.")
+	if s_Target == nil then
 		return
 	end
 
-	-- The WebUI sends an empty string when the duration box is left blank, which
-	-- is not nil, so it reached p_Args[2]*60 and threw "attempt to mul a string".
-	p_Args[2] = tonumber(p_Args[2])
+	-- The WebUI sends "" when the duration box is blank (not nil)
+	local s_Minutes = tonumber(p_Args[2])
 
-	if p_Args[2] == nil or p_Args[2] <= 0 then
-		p_Args[2] = 60
+	if s_Minutes == nil or s_Minutes <= 0 then
+		s_Minutes = 60
 	end
 
-	if p_Args[3]~= nil and p_Args[3] ~= "" then
-		print("ADMIN TBAN - Admin " .. p_Player.name .. " temp. banned Player " .. s_TargetPlayer.name .. "for " .. p_Args[2] .. " minutes. Reason: " .. p_Args[3])
-		s_TargetPlayer:BanTemporarily(p_Args[2]*60, ""..p_Args[3].." (".. p_Player.name..") "..p_Args[2].." minutes")
+	s_Minutes = math.floor(s_Minutes)
+	local s_Name = s_Target.name
+
+	if HasText(p_Args[3]) then
+		s_Target:BanTemporarily(s_Minutes * 60, p_Args[3] .. " (" .. p_Player.name .. ") " .. s_Minutes .. " minutes")
+		Log(p_Player.name, p_Player.name .. " temp-banned " .. s_Name .. " for " .. s_Minutes .. " min. Reason: " .. p_Args[3])
 	else
-		print("ADMIN TBAN - Admin " .. p_Player.name .. " temp. banned Player " .. s_TargetPlayer.name .. "for " .. p_Args[2] .. " minutes.")
-		s_TargetPlayer:BanTemporarily(p_Args[2]*60, "Temporarily banned by ".. p_Player.name.." for "..p_Args[2].." minutes")
+		s_Target:BanTemporarily(s_Minutes * 60, "Temporarily banned by " .. p_Player.name .. " for " .. s_Minutes .. " minutes")
+		Log(p_Player.name, p_Player.name .. " temp-banned " .. s_Name .. " for " .. s_Minutes .. " min.")
 	end
 
-	s_Messages[1] = "Ban confirmed."
-	s_Messages[2] = "You banned the player ".. s_TargetPlayer.name .." successfully for ".. p_Args[2] .." minutes."
-	NetEvents:SendTo('PopupResponse', p_Player, s_Messages)
+	Popup(p_Player, "Ban confirmed.", "You banned the player " .. s_Name .. " successfully for " .. s_Minutes .. " minutes.")
 end
 
 function Admin:OnBanPlayer(p_Player, p_Args)
-	local s_Messages = {}
-
-	if not m_GameAdmin:CanPermanentlyBanPlayers(p_Player.name) and not m_ServerOwner:IsOwner(p_Player.name) then
-		-- That guy is no admin or doesn't have that ability. That guy is also not the server owner.
-		s_Messages[1] = "Error."
-		s_Messages[2] = "Sorry, you are no admin or at least don't have the required abilitities to do this action."
-		NetEvents:SendTo('PopupResponse', p_Player, s_Messages)
-		print("ADMIN BAN - Error Player " .. p_Player.name .. " is no admin")
-		return
-	elseif m_GameAdmin:IsAdmin(p_Args[1]) or m_ServerOwner:IsOwner(p_Args[1]) then
-		s_Messages[1] = "Error."
-		s_Messages[2] = "Sorry, that player is protected."
-		NetEvents:SendTo('PopupResponse', p_Player, s_Messages)
-		print("ADMIN BAN - Error Player " .. p_Args[1] .. " is protected")
+	if not self:Allowed(p_Player, 'CanPermanentlyBanPlayers', 'BAN') or self:IsProtected(p_Player, p_Args[1], 'BAN') then
 		return
 	end
 
-	local s_TargetPlayer = PlayerManager:GetPlayerByName(p_Args[1])
+	local s_Target = self:FindTarget(p_Player, p_Args[1], 'BAN')
 
-	if s_TargetPlayer == nil then
-		-- Player not found.
-		s_Messages[1] = "Error."
-		s_Messages[2] = "Sorry, we couldn't find the player."
-		NetEvents:SendTo('PopupResponse', p_Player, s_Messages)
-		print("ADMIN BAN - Error Admin " .. p_Player.name .. " tried to ban Player " .. p_Args[1] .. " but we couldn't find him.")
+	if s_Target == nil then
 		return
 	end
 
-	if p_Args[2]~= nil and p_Args[2] ~= "" then
-		print("ADMIN BAN - Admin " .. p_Player.name .. " banned Player " .. s_TargetPlayer.name .. ". Reason: " .. p_Args[2])
-		s_TargetPlayer:Ban(""..p_Args[2].." (".. p_Player.name..")")
+	local s_Name = s_Target.name
+
+	if HasText(p_Args[2]) then
+		s_Target:Ban(p_Args[2] .. " (" .. p_Player.name .. ")")
+		Log(p_Player.name, p_Player.name .. " banned " .. s_Name .. ". Reason: " .. p_Args[2])
 	else
-		print("ADMIN BAN - Admin " .. p_Player.name .. " banned Player " .. s_TargetPlayer.name .. ".")
-		s_TargetPlayer:Ban("Banned by ".. p_Player.name.."")
+		s_Target:Ban("Banned by " .. p_Player.name)
+		Log(p_Player.name, p_Player.name .. " banned " .. s_Name .. ".")
 	end
 
-	s_Messages[1] = "Ban confirmed."
-	s_Messages[2] = "You banned the player ".. s_TargetPlayer.name .." successfully."
-	NetEvents:SendTo('PopupResponse', p_Player, s_Messages)
+	Popup(p_Player, "Ban confirmed.", "You banned the player " .. s_Name .. " successfully.")
 end
 
 function Admin:OnDeleteAdminRights(p_Player, p_Args)
-	local s_Messages = {}
-
-	if not m_GameAdmin:CanEditGameAdminList(p_Player.name) and not m_ServerOwner:IsOwner(p_Player.name) then
-		-- That guy is no admin or doesn't have that ability. That guy is also not the server owner.
-		s_Messages[1] = "Error."
-		s_Messages[2] = "Sorry, you are no admin or at least don't have the required abilitities to do this action."
-		NetEvents:SendTo('PopupResponse', p_Player, s_Messages)
-		print("ADMIN - ADMIN RIGHTS - DELETE - Error Player " .. p_Player.name .. " is no admin")
+	if not self:Allowed(p_Player, 'CanEditGameAdminList', 'ADMIN RIGHTS DELETE') then
 		return
 	end
 
 	RCON:SendCommand('gameAdmin.remove', p_Args)
+	Log(p_Player.name, p_Player.name .. " removed admin rights of " .. tostring(p_Args[1]))
 end
 
 function Admin:OnDeleteAndSaveAdminRights(p_Player, p_Args)
-	local s_Messages = {}
-
-	if not m_GameAdmin:CanEditGameAdminList(p_Player.name) and not m_ServerOwner:IsOwner(p_Player.name) then
-		-- That guy is no admin or doesn't have that ability. That guy is also not the server owner.
-		s_Messages[1] = "Error."
-		s_Messages[2] = "Sorry, you are no admin or at least don't have the required abilitities to do this action."
-		NetEvents:SendTo('PopupResponse', p_Player, s_Messages)
-		print("ADMIN - ADMIN RIGHTS - DELETE AND SAVE - Error Player " .. p_Player.name .. " is no admin")
+	if not self:Allowed(p_Player, 'CanEditGameAdminList', 'ADMIN RIGHTS DELETE+SAVE') then
 		return
 	end
 
 	RCON:SendCommand('gameAdmin.remove', p_Args)
 	RCON:SendCommand('gameAdmin.save')
+	Log(p_Player.name, p_Player.name .. " removed (saved) admin rights of " .. tostring(p_Args[1]))
 end
 
 function Admin:OnUpdateAdminRights(p_Player, p_Args)
-	local s_Messages = {}
-
-	if not m_GameAdmin:CanEditGameAdminList(p_Player.name) and not m_ServerOwner:IsOwner(p_Player.name) then
-		-- That guy is no admin or doesn't have that ability. That guy is also not the server owner.
-		s_Messages[1] = "Error."
-		s_Messages[2] = "Sorry, you are no admin or at least don't have the required abilitities to do this action."
-		NetEvents:SendTo('PopupResponse', p_Player, s_Messages)
-		print("ADMIN - ADMIN RIGHTS - ADD/ UPDATE - Error Player " .. p_Player.name .. " is no admin")
+	if not self:Allowed(p_Player, 'CanEditGameAdminList', 'ADMIN RIGHTS UPDATE') then
 		return
 	end
 
 	RCON:SendCommand('gameAdmin.add', p_Args)
+	Log(p_Player.name, p_Player.name .. " updated admin rights of " .. tostring(p_Args[1]))
 end
 
 function Admin:OnUpdateAndSaveAdminRights(p_Player, p_Args)
-	local s_Messages = {}
-
-	if not m_GameAdmin:CanEditGameAdminList(p_Player.name) and not m_ServerOwner:IsOwner(p_Player.name) then
-		-- That guy is no admin or doesn't have that ability. That guy is also not the server owner.
-		s_Messages[1] = "Error."
-		s_Messages[2] = "Sorry, you are no admin or at least don't have the required abilitities to do this action."
-		NetEvents:SendTo('PopupResponse', p_Player, s_Messages)
-		print("ADMIN - ADMIN RIGHTS - ADD/ UPDATE AND SAVE - Error Player " .. p_Player.name .. " is no admin")
+	if not self:Allowed(p_Player, 'CanEditGameAdminList', 'ADMIN RIGHTS UPDATE+SAVE') then
 		return
 	end
 
 	RCON:SendCommand('gameAdmin.add', p_Args)
 	RCON:SendCommand('gameAdmin.save')
+	Log(p_Player.name, p_Player.name .. " updated (saved) admin rights of " .. tostring(p_Args[1]))
 end
 
 function Admin:OnGetAdminRightsOfPlayer(p_Player, p_PlayerName)
-	local s_TargetPlayer = PlayerManager:GetPlayerByName(p_PlayerName)
+	local s_Target = PlayerManager:GetPlayerByName(tostring(p_PlayerName))
 
-	if s_TargetPlayer == nil then
-		-- That player left.
-		local s_Messages = {}
-		s_Messages[1] = "Error."
-		s_Messages[2] = "Sorry, we couldn't find the player."
-		NetEvents:SendTo('PopupResponse', p_Player, s_Messages)
+	if s_Target == nil then
+		Popup(p_Player, "Error.", "Sorry, we couldn't find the player.")
 		return
 	end
 
-	local s_AdminRightsOfPlayer = m_GameAdmin:GetAdminRightsOfPlayer(s_TargetPlayer.name)
-	NetEvents:SendTo('AdminRightsOfPlayer', p_Player, s_AdminRightsOfPlayer)
+	NetEvents:SendTo('AdminRightsOfPlayer', p_Player, m_GameAdmin:GetAdminRightsOfPlayer(s_Target.name))
 end
 
--- Map Rotation
+-- Endregion
+
+-- Region Map Rotation
+
+-- Kept for anything still calling it; the paged fetch lives in BiaManager.
 function Admin:OnGetMapRotation()
-	local s_Args = {}
-	local s_Arg = RCON:SendCommand('mapList.list')
-
-	if s_Arg ~= nil and s_Arg[2] ~= nil then
-		table.remove(s_Arg, 1)
-		table.insert(s_Args, s_Arg)
-	else
-		table.insert(s_Args, " ")
-	end
-
-	s_Arg = nil
-	s_Arg = RCON:SendCommand('mapList.getMapIndices')
-
-	if s_Arg ~= nil and s_Arg[2] ~= nil then
-		table.remove(s_Arg, 1)
-		table.insert(s_Args, s_Arg)
-	else
-		table.insert(s_Args, " ")
-	end
-
-	NetEvents:Broadcast('MapRotation', s_Args)
+	require('BiaManager'):BroadcastMapRotation()
 end
 
 function Admin:OnSetNextMap(p_Player, p_MapIndex)
-	if not m_GameAdmin:CanUseMapFunctions(p_Player.name) and not m_ServerOwner:IsOwner(p_Player.name) then
-		-- That guy is no admin or doesn't have that ability. That guy is also not the server owner.
-		print("ADMIN - SET NEXT MAP - Error - Player " .. p_Player.name .. " is no admin.")
+	if not self:Allowed(p_Player, 'CanUseMapFunctions', 'SET NEXT MAP', true) then
 		return
 	end
 
-	p_MapIndex = tonumber(p_MapIndex) - 1
-	RCON:SendCommand('mapList.setNextMapIndex', {tostring(p_MapIndex)})
-	print("ADMIN - SET NEXT MAP - Admin " .. p_Player.name .. " has changed the next map index to " .. tostring(p_MapIndex) .. ".")
+	-- WebUI list is 1-based, mapList.setNextMapIndex is 0-based.
+	local s_Index = tonumber(p_MapIndex)
+
+	if s_Index == nil or s_Index < 1 then
+		print("ADMIN - SET NEXT MAP - bad index " .. tostring(p_MapIndex) .. " from " .. p_Player.name)
+		return
+	end
+
+	RCON:SendCommand('mapList.setNextMapIndex', { tostring(s_Index - 1) })
+	Log(p_Player.name, p_Player.name .. " set next map index to " .. (s_Index - 1))
 	self:OnGetMapRotation()
 end
 
 function Admin:OnRunNextRound(p_Player)
-	if not m_GameAdmin:CanUseMapFunctions(p_Player.name) and not m_ServerOwner:IsOwner(p_Player.name) then
-		-- That guy is no admin or doesn't have that ability. That guy is also not the server owner.
-		print("ADMIN - RUN NEXT ROUND - Error - Player " .. p_Player.name .. " is no admin.")
+	if not self:Allowed(p_Player, 'CanUseMapFunctions', 'RUN NEXT ROUND', true) then
 		return
 	end
 
 	RCON:SendCommand('mapList.runNextRound')
-	print("ADMIN - RUN NEXT ROUND - Player " .. p_Player.name .. " ran the next round.")
+	Log(p_Player.name, p_Player.name .. " ran the next round")
 end
 
 function Admin:OnRestartRound(p_Player)
-	if not m_GameAdmin:CanUseMapFunctions(p_Player.name) and not m_ServerOwner:IsOwner(p_Player.name) then
-		-- That guy is no admin or doesn't have that ability. That guy is also not the server owner.
-		print("ADMIN - RESTART ROUND - Error - Player " .. p_Player.name .. " is no admin.")
+	if not self:Allowed(p_Player, 'CanUseMapFunctions', 'RESTART ROUND', true) then
 		return
 	end
 
 	RCON:SendCommand('mapList.restartRound')
-	print("ADMIN - RESTART ROUND - Player " .. p_Player.name .. " restarted the round.")
+	Log(p_Player.name, p_Player.name .. " restarted the round")
 end
 
--- Server Setup
+-- Endregion
+
+-- Region Server Setup
+
 function Admin:OnGetServerSetupSettings(p_Player)
+	-- was unguarded: any player could read the game password
+	if not self:Allowed(p_Player, 'CanAlterServerSettings', 'GET SERVER SETUP', true) then
+		return
+	end
+
 	local s_Args = {}
-	local s_Arg = RCON:SendCommand('vars.serverName')
 
-	if s_Arg ~= nil and s_Arg[2] ~= nil then
-		table.remove(s_Arg, 1)
-		table.insert(s_Args, s_Arg)
-	else
-		table.insert(s_Args, " ")
+	for _, l_Var in ipairs({ 'vars.serverName', 'vars.serverDescription', 'vars.serverMessage', 'vars.gamePassword' }) do
+		local s_Arg = RCON:SendCommand(l_Var)
+
+		if s_Arg ~= nil and s_Arg[2] ~= nil then
+			table.remove(s_Arg, 1)
+			table.insert(s_Args, s_Arg)
+		else
+			table.insert(s_Args, " ")
+		end
 	end
 
-	s_Arg = nil
-	s_Arg = RCON:SendCommand('vars.serverDescription')
-
-	if s_Arg ~= nil and s_Arg[2] ~= nil then
-		table.remove(s_Arg, 1)
-		table.insert(s_Args, s_Arg)
-	else
-		table.insert(s_Args, " ")
-	end
-
-	s_Arg = nil
-	s_Arg = RCON:SendCommand('vars.serverMessage')
-
-	if s_Arg ~= nil and s_Arg[2] ~= nil then
-		table.remove(s_Arg, 1)
-		table.insert(s_Args, s_Arg)
-	else
-		table.insert(s_Args, " ")
-	end
-
-	s_Arg = nil
-	s_Arg = RCON:SendCommand('vars.gamePassword')
-
-	if s_Arg ~= nil and s_Arg[2] ~= nil then
-		table.remove(s_Arg, 1)
-		table.insert(s_Args, s_Arg)
-	else
-		table.insert(s_Args, " ")
-	end
-
-	-- ToDo: Add preset, maprotation and overwritePresetOnStart
 	NetEvents:SendTo('ServerSetupSettings', p_Player, s_Args)
 end
 
 function Admin:OnSaveServerSetupSettings(p_Player, p_Args)
-	if not m_GameAdmin:CanAlterServerSettings(p_Player.name) and not m_ServerOwner:IsOwner(p_Player.name) then
-		-- That guy is no admin or doesn't have that ability. That guy is also not the server owner.
-		print("ADMIN - SAVE SERVER SETUP SETTINGS - Error - Player " .. p_Player.name .. " is no admin.")
+	if not self:Allowed(p_Player, 'CanAlterServerSettings', 'SAVE SERVER SETUP', true) then
 		return
 	end
 
 	m_GeneralSettings:OnSaveServerSetupSettings(p_Args)
-	print("ADMIN - SAVE SERVER SETUP SETTINGS - Player " .. p_Player.name .. " updated the server name: " .. p_Args[1] .. ", server description: " .. p_Args[2] .. ", server message: " .. p_Args[3] .. ", and game password: " .. p_Args[4] .. ".")
+	Log(p_Player.name, p_Player.name .. " updated server name/description/message/password")
 end
 
--- Manage Presets
+-- Endregion
+
+-- Region Manage Presets
+
 function Admin:OnManagePresets(p_Player, p_Args)
-	if not m_GameAdmin:CanAlterServerSettings(p_Player.name) and not m_ServerOwner:IsOwner(p_Player.name) then
-		-- That guy is no admin or doesn't have that ability. That guy is also not the server owner.
-		print("ADMIN - MANAGE PRESETS - Error - Player " .. p_Player.name .. " is no admin.")
+	if not self:Allowed(p_Player, 'CanAlterServerSettings', 'MANAGE PRESETS', true) then
 		return
 	end
 
-	if p_Args[1] == "normal" then
+	local s_Preset = p_Args[1]
+
+	if s_Preset == "normal" then
 		m_GeneralSettings:PresetNormal()
-		print("ADMIN - MANAGE PRESETS - Player " .. p_Player.name .. " changed the presets to: NORMAL.")
-	elseif p_Args[1] == "hardcore" then
+	elseif s_Preset == "hardcore" then
 		m_GeneralSettings:PresetHardcore()
-		print("ADMIN - MANAGE PRESETS - Player " .. p_Player.name .. " changed the presets to: HARDCORE.")
-	elseif p_Args[1] == "infantry" then
+	elseif s_Preset == "infantry" then
 		m_GeneralSettings:PresetInfantry()
-		print("ADMIN - MANAGE PRESETS - Player " .. p_Player.name .. " changed the presets to: INFANTRY.")
-	elseif p_Args[1] == "hardcoreNoMap" then
+	elseif s_Preset == "hardcoreNoMap" then
 		m_GeneralSettings:PresetHardcoreNoMap()
-		print("ADMIN - MANAGE PRESETS - Player " .. p_Player.name .. " changed the presets to: HARDCORE NO MAP.")
-	elseif p_Args[1] == "custom" then
+	elseif s_Preset == "custom" then
 		m_GeneralSettings:PresetCustom(p_Args)
-		print("ADMIN - MANAGE PRESETS - Player " .. p_Player.name .. " changed the presets to: CUSTOM.")
+	else
+		return
 	end
 
+	Log(p_Player.name, p_Player.name .. " changed the preset to " .. string.upper(tostring(s_Preset)))
 	NetEvents:Broadcast('ServerInfo', m_GeneralSettings:GetServerConfig())
-	local s_Messages = {}
-	s_Messages[1] = "Changed server settings."
-	s_Messages[2] = "You successfully changed the server settings."
-	NetEvents:SendTo('PopupResponse', p_Player, s_Messages)
+	Popup(p_Player, "Changed server settings.", "You successfully changed the server settings.")
 end
 
--- Manage ModSettings
+-- Endregion
+
+-- Region Manage ModSettings
+
 function Admin:OnResetModSettings(p_Player)
-	if not m_GameAdmin:CanAlterServerSettings(p_Player.name) and not m_ServerOwner:IsOwner(p_Player.name) then
-		-- That guy is no admin or doesn't have that ability. That guy is also not the server owner.
-		print("MODSETTINGS - Reset - Error - Player " .. p_Player.name .. " is no admin.")
+	if not self:Allowed(p_Player, 'CanAlterServerSettings', 'MODSETTINGS RESET', true) then
 		return
 	end
 
 	m_ModSettings:ResetModSettings()
-	print("MODSETTINGS - Reset - Admin " .. p_Player.name .. " has updated the mod settings.")
-
-	local s_Message = {}
-	s_Message[1] = "Mod Settings reset."
-	s_Message[2] = "The mod settings have been resetted."
-	NetEvents:SendTo('PopupResponse', p_Player, s_Message)
+	Log(p_Player.name, p_Player.name .. " reset the mod settings")
+	Popup(p_Player, "Mod Settings reset.", "The mod settings have been reset.")
 end
 
 function Admin:OnResetAndSaveModSettings(p_Player)
-	if not m_GameAdmin:CanAlterServerSettings(p_Player.name) and not m_ServerOwner:IsOwner(p_Player.name) then
-		-- That guy is no admin or doesn't have that ability. That guy is also not the server owner.
-		print("MODSETTINGS - Reset & Save - Error - Player " .. p_Player.name .. " is no admin.")
+	if not self:Allowed(p_Player, 'CanAlterServerSettings', 'MODSETTINGS RESET+SAVE', true) then
 		return
 	end
 
 	m_ModSettings:ResetModSettings()
-	print("MODSETTINGS - Reset & Save - Admin " .. p_Player.name .. " has updated the mod settings.")
-
 	m_ModSettings:SQLSaveModSettings()
-
-	local s_Message = {}
-	s_Message[1] = "Mod Settings resetted & saved."
-	s_Message[2] = "The mod settings have been resetted and saved."
-	NetEvents:SendTo('PopupResponse', p_Player, s_Message)
+	Log(p_Player.name, p_Player.name .. " reset and saved the mod settings")
+	Popup(p_Player, "Mod Settings reset & saved.", "The mod settings have been reset and saved.")
 end
 
 function Admin:OnApplyModSettings(p_Player, p_Args)
-	if not m_GameAdmin:CanAlterServerSettings(p_Player.name) and not m_ServerOwner:IsOwner(p_Player.name) then
-		-- That guy is no admin or doesn't have that ability. That guy is also not the server owner.
-		print("MODSETTINGS - Apply - Error - Player " .. p_Player.name .. " is no admin.")
+	if not self:Allowed(p_Player, 'CanAlterServerSettings', 'MODSETTINGS APPLY', true) then
 		return
 	end
 
 	m_ModSettings:SetModSettings(p_Args)
-	print("MODSETTINGS - Apply - Admin " .. p_Player.name .. " has updated the mod settings.")
-
-	local s_Message = {}
-	s_Message[1] = "Mod Settings applied."
-	s_Message[2] = "The mod settings have been applied."
-	NetEvents:SendTo('PopupResponse', p_Player, s_Message)
+	Log(p_Player.name, p_Player.name .. " applied mod settings")
+	Popup(p_Player, "Mod Settings applied.", "The mod settings have been applied.")
 end
 
 function Admin:OnSaveModSettings(p_Player, p_Args)
-	if not m_GameAdmin:CanAlterServerSettings(p_Player.name) and not m_ServerOwner:IsOwner(p_Player.name) then
-		-- That guy is no admin or doesn't have that ability. That guy is also not the server owner.
-		print("MODSETTINGS - Save - Error - Player " .. p_Player.name .. " is no admin.")
+	if not self:Allowed(p_Player, 'CanAlterServerSettings', 'MODSETTINGS SAVE', true) then
 		return
 	end
 
 	m_ModSettings:SetModSettings(p_Args)
-	print("MODSETTINGS - Save - Admin " .. p_Player.name .. " has updated the mod settings.")
-
 	m_ModSettings:SQLSaveModSettings()
-
-	local s_Message = {}
-	s_Message[1] = "Mod Settings applied & saved."
-	s_Message[2] = "The mod settings have been applied and saved."
-	NetEvents:SendTo('PopupResponse', p_Player, s_Message)
+	Log(p_Player.name, p_Player.name .. " applied and saved mod settings")
+	Popup(p_Player, "Mod Settings applied & saved.", "The mod settings have been applied and saved.")
 end
+
+-- Endregion
 
 return Admin()

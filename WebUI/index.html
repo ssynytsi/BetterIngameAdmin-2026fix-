@@ -8,6 +8,10 @@
 			font-family: "bffont";
 			src: url("bffont.ttf");
 		}
+		@font-face {
+			font-family: "biauni";
+			src: url("biauni.ttf");
+		}
 	</style>
 	<script type="text/javascript" src="script/script.js"></script>
 	<link rel="stylesheet" href="style/style.css">
@@ -834,10 +838,10 @@
 				</div>
 				<div class="currentAndNextMap"><div class="mapMarker next" id="nextMap3"></div><span id="mapRotationNextMap"></span></div>
 				<!--<div class="mapRotationButtons" onclick="endRoundPopUp()"><p>End Round</p></div>-->
-				<div class="mapRotationButtons" onclick="nextRound()">
+				<div class="mapRotationButtons biaAdminOnly" onclick="nextRound()">
 					<p>Next Round</p>
 				</div>
-				<div class="mapRotationButtons" onclick="restart()">
+				<div class="mapRotationButtons biaAdminOnly" onclick="restart()">
 					<p>Restart</p>
 				</div>
 				<div class="mapRotationButtons" onclick="showClientSettings()">
@@ -2326,7 +2330,7 @@
 	</div>
 	<div id="tables">
 		<div id="table1" class="sbTable">
-			<div id="table1tbody" class="sbBody">
+			<div class="sbHead" id="table1head">
 				<div id="firstrow" class="sbRow">
 					<div id="team1" class="sbCell">US</div>
 					<div id="tickets1" class="sbCell">50</div>
@@ -2335,18 +2339,11 @@
 					<div id="scoreHeader1" class="sbCell">SCORE</div>
 					<div id="pingHeader1" class="sbCell">PING</div>
 				</div>
-				<!--	<div>
-						<div id="place1" class="sbCell">32</div>
-						<div id="name1" class="sbCell">Flash_Hit</div>
-						<div id="kills1" class="sbCell">50</div>
-						<div id="deaths1" class="sbCell">5</div>
-						<div id="points1" class="sbCell">5000</div>
-						<div id="ping1" class="sbCell">20</div>
-					</div> -->
 			</div>
+			<div id="table1tbody" class="sbBody"></div>
 		</div>
 		<div id="table2" class="sbTable">
-			<div id="table2tbody" class="sbBody">
+			<div class="sbHead" id="table2head">
 				<div id="firstrow" class="sbRow">
 					<div id="team2" class="sbCell">RU</div>
 					<div id="tickets2" class="sbCell">50</div>
@@ -2355,18 +2352,11 @@
 					<div id="scoreHeader2" class="sbCell">SCORE</div>
 					<div id="pingHeader2" class="sbCell">PING</div>
 				</div>
-				<!--	<div>
-					<div id="place2" class="sbCell">9</div>
-					<div id="name2" class="sbCell">Flash_Hit</div>
-					<div id="kills2" class="sbCell">50</div>
-					<div id="deaths2" class="sbCell">5</div>
-					<div id="points2" class="sbCell">5000</div>
-					<div id="ping2" class="sbCell">20</div>
-				</div> -->
 			</div>
+			<div id="table2tbody" class="sbBody"></div>
 		</div>
 		<div id="table3" class="sbTable">
-			<div id="table3tbody" class="sbBody">
+			<div class="sbHead" id="table3head">
 				<div id="firstrow" class="sbRow">
 					<div id="team3" class="sbCell">RU</div>
 					<div id="tickets3" class="sbCell">50</div>
@@ -2375,18 +2365,11 @@
 					<div id="scoreHeader3" class="sbCell">SCORE</div>
 					<div id="pingHeader3" class="sbCell">PING</div>
 				</div>
-				<!--	<div>
-					<div id="place3" class="sbCell">9</div>
-					<div id="name3" class="sbCell">Flash_Hit</div>
-					<div id="kills3" class="sbCell">50</div>
-					<div id="deaths3" class="sbCell">50</div>
-					<div id="points3" class="sbCell">50</div>
-					<div id="ping3" class="sbCell">50</div>
-				</div> -->
 			</div>
+			<div id="table3tbody" class="sbBody"></div>
 		</div>
 		<div id="table4" class="sbTable">
-			<div id="table4tbody" class="sbBody">
+			<div class="sbHead" id="table4head">
 				<div id="firstrow" class="sbRow">
 					<div id="team4" class="sbCell">RU</div>
 					<div id="tickets4" class="sbCell">50</div>
@@ -2395,15 +2378,8 @@
 					<div id="scoreHeader4" class="sbCell">SCORE</div>
 					<div id="pingHeader4" class="sbCell">PING</div>
 				</div>
-				<!--	<div>
-					<div id="place4" class="sbCell">9</div>
-					<div id="name4" class="sbCell">Flash_Hit</div>
-					<div id="kills4" class="sbCell">50</div>
-					<div id="deaths4" class="sbCell">50</div>
-					<div id="points4" class="sbCell">50</div>
-					<div id="ping4" class="sbCell">50</div>
-				</div> -->
 			</div>
+			<div id="table4tbody" class="sbBody"></div>
 		</div>
 	</div>
 	<div id="popup">

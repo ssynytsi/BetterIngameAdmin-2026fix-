@@ -5,29 +5,10 @@
   box-sizing: content-box;
 }
 
-/* Region Scrollbars */
-::-webkit-scrollbar {
-  display: none;
-}
-#popup::-webkit-scrollbar,
-#squadNamesDropDown::-webkit-scrollbar,
-#adminpanelbody::-webkit-scrollbar {
-  display: inline;
-  width: 5px;
-}
-#popup::-webkit-scrollbar-thumb,
-#squadNamesDropDown::-webkit-scrollbar-thumb,
-#adminpanelbody::-webkit-scrollbar-thumb {
-  background-color: #8e8e8e;
-  background-clip: padding-box;
-}
-#popup::-webkit-scrollbar-track,
-#adminpanelbody::-webkit-scrollbar-track {
-  background-color: #bbbbbb;
-}
-#squadNamesDropDown::-webkit-scrollbar-track {
-  background-color: #f0f0f0;
-}
+
+
+
+
 /* Endregion */
 
 body {
@@ -95,7 +76,8 @@ body {
   width: 100%;
   text-shadow: 0px 0px 10px #6ed7ff;
 }
-#localPlayerScoreboard {
+#localPlayerScoreboard,
+#biaPinnedRow {
   background: linear-gradient(
     rgba(255, 156, 55, 0.96),
     rgba(181, 109, 35, 0.96)
@@ -140,7 +122,8 @@ body {
   padding-left: 50px;
   width: calc(535px * 0.48);
 }
-#localPlayerScoreboard #name1 {
+#localPlayerScoreboard #name1,
+#biaPinnedRow #name1 {
   text-shadow: 0px 0px 1px rgba(0, 0, 0, 0.79);
 }
 #killsHeader1,
@@ -210,11 +193,13 @@ body {
   text-shadow: 0px 0px 7px #000406a3;
 }
 .sbBody > div:hover .sbCell #action,
-#localPlayerScoreboard .sbCell #action {
+#localPlayerScoreboard .sbCell #action,
+#biaPinnedRow .sbCell #action {
   border-color: #333 transparent transparent transparent;
 }
 .sbBody > div:hover .sbCell #action:hover,
-#localPlayerScoreboard .sbCell #action:hover {
+#localPlayerScoreboard .sbCell #action:hover,
+#biaPinnedRow .sbCell #action:hover {
   border-color: #000 transparent;
 }
 #table1,
@@ -473,7 +458,8 @@ label {
   background-size: 38px 38px;
   background-repeat: no-repeat;
 }
-#localPlayerScoreboard.isDead #name1 {
+#localPlayerScoreboard.isDead #name1,
+#biaPinnedRow.isDead #name1 {
   background-image: url(/images/Dead-Black.png) !important;
 }
 #squadMates.isDead #name1 {
@@ -486,7 +472,8 @@ label {
 #squadMates.isDead:hover #name1 {
   background-image: url(/images/Dead-Black.png) !important;
 }
-#localPlayerScoreboard.ID_M_ASSAULT #name1 {
+#localPlayerScoreboard.ID_M_ASSAULT #name1,
+#biaPinnedRow.ID_M_ASSAULT #name1 {
   background-image: url(/images/Assault-Black.png);
 }
 #squadMates.ID_M_ASSAULT #name1 {
@@ -499,7 +486,8 @@ label {
 #squadMates.ID_M_ASSAULT:hover #name1 {
   background-image: url(/images/Assault-Black.png);
 }
-#localPlayerScoreboard.ID_M_ENGINEER #name1 {
+#localPlayerScoreboard.ID_M_ENGINEER #name1,
+#biaPinnedRow.ID_M_ENGINEER #name1 {
   background-image: url(/images/Engineer-Black.png);
 }
 #squadMates.ID_M_ENGINEER #name1 {
@@ -512,7 +500,8 @@ label {
 #squadMates.ID_M_ENGINEER:hover #name1 {
   background-image: url(/images/Engineer-Black.png);
 }
-#localPlayerScoreboard.ID_M_SUPPORT #name1 {
+#localPlayerScoreboard.ID_M_SUPPORT #name1,
+#biaPinnedRow.ID_M_SUPPORT #name1 {
   background-image: url(/images/Support-Black.png);
 }
 #squadMates.ID_M_SUPPORT #name1 {
@@ -525,7 +514,8 @@ label {
 #squadMates.ID_M_SUPPORT:hover #name1 {
   background-image: url(/images/Support-Black.png);
 }
-#localPlayerScoreboard.ID_M_RECON #name1 {
+#localPlayerScoreboard.ID_M_RECON #name1,
+#biaPinnedRow.ID_M_RECON #name1 {
   background-image: url(/images/Recon-Black.png);
 }
 #squadMates.ID_M_RECON #name1 {
@@ -1068,32 +1058,9 @@ label {
   margin-top: -2px;
   margin-left: -2px;
 }
-.sbTable::-webkit-scrollbar,
-#mapRotationConfiguration::-webkit-scrollbar,
-#mapListConfiguration::-webkit-scrollbar,
-#modListConfiguration::-webkit-scrollbar,
-#serverInfoConfiguration::-webkit-scrollbar,
-.presetsConfiguration::-webkit-scrollbar {
-  display: inline;
-  width: 6px;
-}
-.sbTable::-webkit-scrollbar-thumb,
-#mapRotationConfiguration::-webkit-scrollbar-thumb,
-#mapListConfiguration::-webkit-scrollbar-thumb,
-#modListConfiguration::-webkit-scrollbar-thumb,
-#serverInfoConfiguration::-webkit-scrollbar-thumb,
-.presetsConfiguration::-webkit-scrollbar-thumb {
-  background-color: #ffffff;
-  background-clip: padding-box;
-}
-.sbTable::-webkit-scrollbar-track,
-#mapRotationConfiguration::-webkit-scrollbar-track,
-#mapListConfiguration::-webkit-scrollbar-track,
-#modListConfiguration::-webkit-scrollbar-track,
-#serverInfoConfiguration::-webkit-scrollbar-track,
-.presetsConfiguration::-webkit-scrollbar-track {
-  background-color: rgba(192, 193, 207, 0.22);
-}
+
+
+
 #serverInfoMapRotationBody {
   height: 24px;
   background: linear-gradient(rgba(2, 3, 4, 0.86), rgba(35, 46, 53, 0.85));
@@ -1259,13 +1226,7 @@ label {
   text-align: center;
   width: inherit;
 }
-.generalClientSettingsElementRight span input::-webkit-outer-spin-button,
-.generalClientSettingsElementRight span input::-webkit-inner-spin-button,
-.generalModSettingsElementRight span input::-webkit-outer-spin-button,
-.generalModSettingsElementRight span input::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
+
 .generalClientSettingsElementRight span input:focus,
 .generalModSettingsElementRight span input:focus {
   outline: none;
@@ -2488,7 +2449,11 @@ label {
    on /images/ - these are resolved from the UI root, not from /style/. */
 #localPlayerScoreboard.isDead #name2,
 #localPlayerScoreboard.isDead #name3,
-#localPlayerScoreboard.isDead #name4 {
+#localPlayerScoreboard.isDead #name4,
+not from /style/. */
+#biaPinnedRow.isDead #name2,
+#biaPinnedRow.isDead #name3,
+#biaPinnedRow.isDead #name4 {
   background-image: url(/images/Dead-Black.png) !important;
 }
 #squadMates.isDead #name2,
@@ -2511,7 +2476,10 @@ label {
 }
 #localPlayerScoreboard.ID_M_ASSAULT #name2,
 #localPlayerScoreboard.ID_M_ASSAULT #name3,
-#localPlayerScoreboard.ID_M_ASSAULT #name4 {
+#localPlayerScoreboard.ID_M_ASSAULT #name4,
+#biaPinnedRow.ID_M_ASSAULT #name2,
+#biaPinnedRow.ID_M_ASSAULT #name3,
+#biaPinnedRow.ID_M_ASSAULT #name4 {
   background-image: url(/images/Assault-Black.png);
 }
 #squadMates.ID_M_ASSAULT #name2,
@@ -2534,7 +2502,10 @@ label {
 }
 #localPlayerScoreboard.ID_M_ENGINEER #name2,
 #localPlayerScoreboard.ID_M_ENGINEER #name3,
-#localPlayerScoreboard.ID_M_ENGINEER #name4 {
+#localPlayerScoreboard.ID_M_ENGINEER #name4,
+#biaPinnedRow.ID_M_ENGINEER #name2,
+#biaPinnedRow.ID_M_ENGINEER #name3,
+#biaPinnedRow.ID_M_ENGINEER #name4 {
   background-image: url(/images/Engineer-Black.png);
 }
 #squadMates.ID_M_ENGINEER #name2,
@@ -2557,7 +2528,10 @@ label {
 }
 #localPlayerScoreboard.ID_M_SUPPORT #name2,
 #localPlayerScoreboard.ID_M_SUPPORT #name3,
-#localPlayerScoreboard.ID_M_SUPPORT #name4 {
+#localPlayerScoreboard.ID_M_SUPPORT #name4,
+#biaPinnedRow.ID_M_SUPPORT #name2,
+#biaPinnedRow.ID_M_SUPPORT #name3,
+#biaPinnedRow.ID_M_SUPPORT #name4 {
   background-image: url(/images/Support-Black.png);
 }
 #squadMates.ID_M_SUPPORT #name2,
@@ -2580,7 +2554,10 @@ label {
 }
 #localPlayerScoreboard.ID_M_RECON #name2,
 #localPlayerScoreboard.ID_M_RECON #name3,
-#localPlayerScoreboard.ID_M_RECON #name4 {
+#localPlayerScoreboard.ID_M_RECON #name4,
+#biaPinnedRow.ID_M_RECON #name2,
+#biaPinnedRow.ID_M_RECON #name3,
+#biaPinnedRow.ID_M_RECON #name4 {
   background-image: url(/images/Recon-Black.png);
 }
 #squadMates.ID_M_RECON #name2,
@@ -4053,3 +4030,777 @@ body {
   text-shadow: none;
 }
 
+/* ==========================================================================
+   BIA v3 - final layer. Everything that used to live in the old
+   "fix pack" blocks (sticky headers, !important vote popup pins, range input)
+   was removed; those rules fought the JS (an !important left/top beats an
+   inline style, so the vote popup could never be moved) or used features
+   Gameface ignores (position: sticky, gap, input[type=range]).
+   ========================================================================== */
+
+/* --- zoom root ---------------------------------------------------------- */
+#scoreboard {
+  position: relative;
+  z-index: 10;
+  flex-direction: column;
+  align-items: center;
+}
+#headertabs {
+  position: relative;
+  z-index: 20;
+  flex-shrink: 0;
+}
+#tables {
+  position: relative;
+  z-index: 1;
+  transform: none;
+}
+
+/* --- UI zoom bar ------------------------------------------------------------ */
+#biaZoomBar {
+  display: none;
+  flex-direction: row;
+  align-items: center;
+  align-self: center;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 21;
+  height: 26px;
+  margin: 0 0 4px 0;
+  padding: 0 8px;
+  color: #cde;
+  font-size: 12px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(120, 180, 220, 0.4);
+}
+.biaZoomLabel {
+  display: flex;
+  align-items: center;
+  height: 20px;
+  margin-right: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.biaZoomBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin: 0 2px;
+  flex-shrink: 0;
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.14);
+}
+.biaZoomBtn.wide {
+  width: auto;
+  padding: 0 7px;
+}
+.biaZoomBtn:hover {
+  background: #ffffff;
+  color: #000;
+}
+#biaZoomTrack {
+  display: flex;
+  position: relative;
+  width: 180px;
+  height: 8px;
+  margin: 0 8px;
+  flex-shrink: 0;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.18);
+}
+#biaZoomFill {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 50%;
+  height: 8px;
+  background: #73c3ff;
+}
+#biaZoomKnob {
+  position: absolute;
+  top: -4px;
+  left: 50%;
+  width: 8px;
+  height: 16px;
+  margin-left: -4px;
+  background: #ffffff;
+}
+#biaZoomVal {
+  display: flex;
+  justify-content: flex-end;
+  width: 40px;
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+.biaZoomSep {
+  display: flex;
+  width: 1px;
+  height: 18px;
+  margin: 0 10px;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.3);
+}
+#biaResVal {
+  display: flex;
+  margin-left: 10px;
+  color: #8aa;
+  flex-shrink: 0;
+}
+
+/* --- scoreboard: fixed banners, scrolling body ------------------------------ */
+.sbTable {
+  position: relative;
+  overflow: visible;
+}
+.sbHead {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 3;
+  width: 536px;
+}
+.sbTable .sbBody {
+  height: 418px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex-shrink: 0;
+}
+
+/* --- scroll hint arrows (CSS triangles, clickable) -------------------------- */
+.biaHintHost {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+.biaHintBox,
+#tables .biaHintBox {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  position: absolute;
+  bottom: 6px;
+  width: 18px;
+  height: 46px;
+  z-index: 12;
+  overflow: visible;
+}
+.biaHintLeft {
+  left: -24px;
+}
+.biaHintRight {
+  right: -24px;
+}
+.biaScrollHint,
+#tables .biaScrollHint {
+  display: none;
+  width: 0px;
+  height: 0px;
+  padding: 0;
+  margin: 4px 0;
+  flex-shrink: 0;
+  border-style: solid;
+  background: transparent;
+  cursor: pointer;
+}
+.biaScrollDown,
+#tables .biaScrollDown {
+  border-width: 12px 8px 0px 8px;
+  border-color: #7ec8ff transparent transparent transparent;
+}
+.biaScrollUp,
+#tables .biaScrollUp {
+  border-width: 0px 8px 12px 8px;
+  border-color: transparent transparent #7ec8ff transparent;
+}
+
+/* --- map rotation: fixed px columns so Vote/Insta always fit ---------------- */
+.mapRotationLeft,
+.mapRotationRight {
+  width: 526px;
+}
+#mapRotationConfiguration {
+  display: flex;
+  flex-direction: column;
+  width: 526px;
+  height: auto;
+  max-height: 560px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+#mapListConfiguration {
+  max-height: 520px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.mapRotationFieldElement {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-shrink: 0;
+  flex-wrap: nowrap;
+  width: 526px;
+  height: 28px;
+  box-sizing: border-box;
+  cursor: default;
+}
+.mapRotationFieldElement.biaRowAdmin {
+  cursor: pointer;
+}
+.mapRotationFieldElementMap {
+  width: 200px;
+  padding-left: 12px;
+  flex-shrink: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.mapRotationFieldElementGameMode {
+  width: 168px;
+  flex-shrink: 0;
+  justify-content: flex-start;
+  text-align: left;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 15px;
+}
+.mapRotationFieldElementGameMode span {
+  margin-right: 6px;
+}
+.biaQBadge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 18px;
+  margin-right: 4px;
+  flex-shrink: 0;
+  font-size: 11px;
+  color: #000;
+}
+.biaRowQueued .biaQBadge {
+  background: rgba(255, 156, 55, 0.9);
+}
+.mapRotVoteBtns {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-shrink: 0;
+  margin-left: auto;
+  padding-right: 4px;
+}
+.mapRotVoteBtns .mapQueueBtn {
+  width: 44px;
+  min-width: 44px;
+  height: 22px;
+  margin-left: 4px;
+  margin-right: 0px;
+  padding: 0;
+  font-size: 11px;
+}
+.mapInstaVoteBtn {
+  background: rgba(160, 30, 30, 0.9);
+  color: #ffffff;
+}
+
+/* mode filter chips above the map list */
+#biaModeFilter {
+  display: none;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  width: 526px;
+  padding: 3px 0;
+  background: rgba(0, 0, 0, 0.35);
+}
+.biaChip {
+  display: flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 8px;
+  margin: 1px 3px;
+  font-size: 12px;
+  color: #dfe;
+  text-transform: uppercase;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.12);
+}
+.biaChip.active {
+  background: #73c3ff;
+  color: #000;
+}
+.biaChip:hover {
+  background: #ffffff;
+  color: #000;
+}
+
+/* --- queue ------------------------------------------------------------------- */
+#mapQueuePanel {
+  position: relative;
+}
+#mapQueueList {
+  max-height: 600px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.mapQueueToggleDisabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+/* --- admin tools (Say / Yell / Reload maplist / Cancel vote) ------------------ */
+#biaAdminTools {
+  display: none;
+  flex-direction: column;
+  width: 512px;
+  margin-top: 6px;
+}
+.biaToolRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  height: 28px;
+  margin-bottom: 2px;
+  padding: 0 4px;
+  background: linear-gradient(rgba(2, 3, 4, 0.68), rgba(35, 46, 53, 0.65));
+}
+.biaToolRow .mapQueueBtn.wide {
+  width: auto;
+  height: 22px;
+  padding: 0 8px;
+  margin-right: 4px;
+  font-size: 12px;
+}
+#biaSayInput {
+  display: flex;
+  width: 290px;
+  height: 22px;
+  line-height: 22px;
+  margin-right: 6px;
+  padding: 0 6px;
+  border: 0;
+  color: #000;
+  background: #ffffff;
+  font-family: bffont;
+  font-size: 14px;
+}
+
+/* --- vote popup (JS positions it in screen space; no !important here) -------- */
+#votepopup {
+  z-index: 9999;
+}
+#biaVoteBar {
+  display: none;
+  flex-direction: row;
+  position: relative;
+  width: 230px;
+  height: 14px;
+  margin-top: 2px;
+  flex-shrink: 0;
+  background: rgba(0, 0, 0, 0.7);
+}
+#biaVoteBarFill {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 0%;
+  height: 14px;
+  background: #2b8718;
+}
+#biaVoteBarText {
+  display: flex;
+  position: relative;
+  align-items: center;
+  justify-content: center;
+  width: 230px;
+  height: 14px;
+  font-size: 10px;
+  color: #ffffff;
+}
+
+/* --- admin log tab ------------------------------------------------------------ */
+.biaLogTime {
+  display: flex;
+  align-items: center;
+  width: 130px;
+  padding-left: 10px;
+  flex-shrink: 0;
+  font-size: 12px;
+  color: #9ab;
+}
+.biaLogText {
+  display: flex;
+  align-items: center;
+  width: 540px;
+  flex-shrink: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+/* --- tooltip -------------------------------------------------------------------- */
+#biaFloatTip {
+  position: absolute;
+  z-index: 10000;
+  max-width: 260px;
+  padding: 6px 10px;
+  background: rgba(0, 0, 0, 0.9);
+  color: #fff;
+  border: 1px solid #6af;
+  font-size: 13px;
+  text-transform: none;
+  pointer-events: none;
+}
+
+/* ==========================================================================
+   v3.2
+   ========================================================================== */
+
+/* tool buttons were inheriting a dim text colour -> looked disabled */
+#biaAdminTools,
+#biaFavRow {
+  position: relative;
+  z-index: 6;
+  color: #ffffff;
+}
+.biaToolRow .mapQueueBtn,
+#biaFavRow .mapQueueBtn {
+  color: #ffffff;
+  background: linear-gradient(rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.12));
+}
+.biaToolRow .mapQueueBtn:hover,
+#biaFavRow .mapQueueBtn:hover {
+  background: linear-gradient(#ffffff, #909090d1);
+  color: #000000;
+}
+.biaBigBtn {
+  background: linear-gradient(rgba(255, 90, 40, 0.85), rgba(170, 30, 10, 0.85));
+}
+.biaToolLabel {
+  display: flex;
+  align-items: center;
+  height: 22px;
+  margin-right: 8px;
+  font-size: 13px;
+  color: #dfe8ee;
+}
+#biaRoundEndVal {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 22px;
+  margin: 0 4px;
+  font-size: 13px;
+  color: #ffffff;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+/* --- favorite queues row --------------------------------------------------- */
+#biaFavRow {
+  display: none;
+  flex-direction: row;
+  align-items: center;
+  width: 512px;
+  height: 28px;
+  padding: 0 4px;
+  box-sizing: border-box;
+  background: rgba(0, 0, 0, 0.45);
+}
+#biaFavRow .mapQueueBtn.wide {
+  width: auto;
+  height: 22px;
+  padding: 0 8px;
+  margin-right: 4px;
+  font-size: 12px;
+}
+#biaFavPick {
+  justify-content: space-between;
+  min-width: 150px;
+  max-width: 170px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.biaCaret {
+  display: flex;
+  width: 0px;
+  height: 0px;
+  margin-left: 8px;
+  flex-shrink: 0;
+  border-style: solid;
+  border-width: 6px 5px 0px 5px;
+  border-color: #ffffff transparent transparent transparent;
+}
+#biaFavPick:hover .biaCaret {
+  border-color: #000000 transparent transparent transparent;
+}
+#biaFavList {
+  display: none;
+  flex-direction: column;
+  position: absolute;
+  left: 4px;
+  top: 27px;
+  width: 260px;
+  z-index: 30;
+  background: rgba(8, 14, 20, 0.97);
+  border: 1px solid #73c3ff;
+}
+.biaFavItem {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  height: 24px;
+  padding: 0 8px;
+  font-size: 13px;
+  color: #ffffff;
+  cursor: pointer;
+}
+.biaFavItem:hover,
+.biaFavItem.active {
+  background: #73c3ff;
+  color: #000000;
+}
+.biaFavEmpty {
+  color: #9ab;
+  cursor: default;
+}
+.biaFavItemName {
+  display: flex;
+  width: 200px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.biaFavItemCount {
+  display: flex;
+  margin-left: auto;
+  font-size: 11px;
+  opacity: 0.8;
+}
+#biaFavName {
+  display: flex;
+  width: 120px;
+  height: 22px;
+  line-height: 22px;
+  margin-right: 4px;
+  padding: 0 6px;
+  border: 0;
+  color: #000000;
+  background: #ffffff;
+  font-family: bffont;
+  font-size: 13px;
+}
+
+/* --- EXTRA YELL ------------------------------------------------------------ */
+#biaBigYell {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 10001;
+  pointer-events: none;
+}
+#biaBigYellText {
+  display: flex;
+  white-space: nowrap;
+  color: #ff3030;
+  text-transform: uppercase;
+  text-shadow: 0px 0px 6px #000000, 0px 0px 18px rgba(0, 0, 0, 0.9);
+}
+#biaBigYellFrom {
+  display: flex;
+  margin-top: 6px;
+  font-size: 22px;
+  color: #ffffff;
+  text-shadow: 0px 0px 4px #000000;
+}
+
+/* --- pin local player ---------------------------------------------------------- */
+.biaPinBox {
+  display: flex;
+  width: 10px;
+  height: 10px;
+  margin: 0 6px 0 0;
+  flex-shrink: 0;
+  align-self: center;
+  border: 1px solid #ffffff;
+  background: rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+}
+.biaPinBox.checked {
+  background: #ffffff;
+  box-shadow: inset 0px 0px 0px 2px #1a6aa8;
+}
+#tables .biaPinned {
+  border-bottom: 2px solid #73c3ff;
+}
+
+/* --- language picker ----------------------------------------------------------- */
+#biaLangWrap {
+  display: flex;
+  position: relative;
+  flex-shrink: 0;
+}
+#biaLangBtn {
+  padding: 0 6px;
+}
+.biaFlag {
+  display: flex;
+  width: 20px;
+  height: 13px;
+  margin-right: 5px;
+  flex-shrink: 0;
+}
+#biaLangList {
+  display: none;
+  flex-direction: column;
+  position: absolute;
+  right: 0px;
+  top: 24px;
+  width: 96px;
+  z-index: 40;
+  background: rgba(8, 14, 20, 0.97);
+  border: 1px solid #73c3ff;
+}
+.biaLangItem {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  height: 24px;
+  padding: 0 6px;
+  color: #ffffff;
+  cursor: pointer;
+}
+.biaLangItem:hover {
+  background: #73c3ff;
+  color: #000000;
+}
+
+/* bffont (Purista) has no Cyrillic / CJK glyphs, so other languages switch
+   the whole UI font:
+   RU/UK -> biacyr.ttf (Exo 2 subset, full Cyrillic incl. Ukrainian)
+   ZH/JA -> biacjk.ttf (Noto Sans SC subset: kana + the 3,755 most common
+            Chinese characters, so Chinese player names render too) */
+#overlay.biaCyr body,
+#overlay.biaCyr body *,
+#overlay.biaCJK body,
+#overlay.biaCJK body * {
+  font-family: biauni !important;
+}
+/* stays English + Purista in every language (arrows, +All, Mix, codes) */
+#overlay.biaCyr body .biaKeepFont,
+#overlay.biaCJK body .biaKeepFont,
+.biaKeepFont {
+  font-family: bffont !important;
+}
+/* anything a player TYPES or broadcasts can be any of the 5 languages,
+   whatever the menu language is -> always the all-language font */
+#biaSayInput,
+#biaFavName,
+.biaUni,
+#biaBigYellText,
+#biaBigYellFrom,
+.biaLogText,
+#overlay.biaCyr body #biaSayInput,
+#overlay.biaCJK body #biaSayInput,
+#overlay.biaCyr body #biaFavName,
+#overlay.biaCJK body #biaFavName {
+  font-family: biauni !important;
+}
+
+
+/* ==========================================================================
+   v3.3
+   ========================================================================== */
+
+/* dead players: always show the white skull, black one on hover
+   (Dead-White-Squad = the variant drawn for green squad-mate rows) */
+.isDead #name1,
+.isDead #name2,
+.isDead #name3,
+.isDead #name4 {
+  background-image: url(/images/Dead-White.png) !important;
+  background-size: 38px 38px;
+  background-repeat: no-repeat;
+}
+#squadMates.isDead #name1,
+#squadMates.isDead #name2,
+#squadMates.isDead #name3,
+#squadMates.isDead #name4 {
+  background-image: url(/images/Dead-White-Squad.png) !important;
+}
+.isDead:hover #name1,
+.isDead:hover #name2,
+.isDead:hover #name3,
+.isDead:hover #name4,
+#squadMates.isDead:hover #name1,
+#squadMates.isDead:hover #name2,
+#squadMates.isDead:hover #name3,
+#squadMates.isDead:hover #name4,
+#localPlayerScoreboard.isDead #name1,
+#localPlayerScoreboard.isDead #name2,
+#localPlayerScoreboard.isDead #name3,
+#localPlayerScoreboard.isDead #name4,
+#biaPinnedRow.isDead #name1,
+#biaPinnedRow.isDead #name2,
+#biaPinnedRow.isDead #name3,
+#biaPinnedRow.isDead #name4 {
+  background-image: url(/images/Dead-Black.png) !important;
+}
+
+/* squad deathmatch: 4 squads -> 2x2 grid instead of running off-screen */
+#tables {
+  flex-wrap: wrap;
+}
+#tables .sbBody > div {
+  display: flex;
+}
+
+/* CJK tooltips / hint boxes: wrap inside the box (zero-width spaces are
+   inserted by the translator; these make sure wrapping is allowed) */
+#biaFloatTip,
+#lookSettingsHint {
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: break-all;
+}
+#lookSettingsHint {
+  max-width: 300px;
+}
+.biaLangLabel {
+  display: flex;
+  font-size: 13px;
+}
+
+/* v3.4: CJK say / yell overlays */
+#biaSayFeed {
+  display: flex;
+  flex-direction: column;
+  z-index: 10001;
+  pointer-events: none;
+}
+.biaSayLine {
+  display: flex;
+  color: #ffffff;
+  text-shadow: 0px 0px 3px #000000, 0px 0px 8px rgba(0, 0, 0, 0.8);
+  white-space: nowrap;
+}
+#biaYellBox {
+  display: none;
+  justify-content: center;
+  z-index: 10001;
+  pointer-events: none;
+  white-space: nowrap;
+  color: #4fb4ff;
+  text-shadow: 0px 0px 4px #000000, 0px 0px 12px rgba(0, 0, 0, 0.9);
+}
+/* squad deathmatch grid: tables are placed by biaSquadLayout() */
+#tables.biaSquadMode {
+  flex-wrap: nowrap;
+}
+#tables.biaSquadMode > .sbTable {
+  margin: 0px;
+}

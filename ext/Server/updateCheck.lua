@@ -3,13 +3,13 @@
 
 
 -- Add current mod version
-local s_LocalModVersion = "0.2.7" --temp fix, waiting for API to get version from mod.json
+local s_LocalModVersion = "0.3.1" --temp fix, waiting for API to get version from mod.json
 
 -- Project URL
 local s_ProjectURL = "https://community.veniceunleashed.net/t/betteringameadmin-alpha/658"
 
 -- Add check URL
-local s_CheckURL = "https://raw.githubusercontent.com/FlashHit/BetterIngameAdmin/main/mod.json"
+local s_CheckURL = "https://raw.githubusercontent.com/ssynytsi/BetterIngameAdmin-2026fix-/main/mod.json"
 -- Check URL examples:
 -- GitLab link to mod.json: https://gitlab.com/n4gi0s/vu-mapvote/-/raw/master/mod.json
 -- GitHub link to mod.json: https://raw.githubusercontent.com/GramThanos/bf3-vu-day-night/main/day-night/mod.json

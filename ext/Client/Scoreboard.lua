@@ -39,6 +39,12 @@ function Scoreboard:OnUIInputConceptEvent(p_HookCtx, p_EventType, p_Action)
 		return
 	end
 
+	-- A BIA text field owns the keyboard: Tab must not toggle/close the menu
+	if BIA_TYPING == true then
+		p_HookCtx:Pass(UIInputAction.UIInputAction_None, p_EventType)
+		return
+	end
+
 	local s_Player = PlayerManager:GetLocalPlayer()
 
 	if s_Player == nil or self.m_IsSpectator == true then
