@@ -1,7 +1,8 @@
 ---@class BiaManager
--- Server side of BetterIngameAdmin:
+-- Server side of BetterIngameAdmin v3:
 --   persistent map queue, ban/admin lists, map votes, admin say/yell,
 --   maplist reload, instavote and a persistent admin action log.
+-- require('BiaManager') in ext/Server/__init__.lua (already there).
 BiaManager = class 'BiaManager'
 
 ---@type GameAdmin
@@ -9,15 +10,32 @@ local m_GameAdmin = require('GameAdmin')
 ---@type ServerOwner
 local m_ServerOwner = require('ServerOwner')
 
-local LOG_KEEP = 200        -- rows kept in mod.db
+local LOG_KEEP = 1000       -- hard cap on rows (only rows older than LOG_PROTECT_DAYS are ever trimmed)
+local LOG_MAX_AGE_DAYS = 6  -- auto-clean deletes rows this old or older...
+local LOG_CLEAN_EVERY_DAYS = 6 -- ...and runs once every this many days
+local LOG_PROTECT_DAYS = 3  -- the last N calendar days that HAVE log entries (before today) are never
+                            -- auto-deleted, however old they are; today is always kept too
 local LOG_SEND = 100        -- rows sent to the WebUI
 local VOTE_SECONDS = 30
 local VOTE_SHARE = 0.5      -- share of players needed for a map vote to pass early
 local YELL_SECONDS = "8"
 local FAV_MAX = 10
 local BIGYELL_SECONDS = 6
-local ROUNDEND_MIN = 5    -- seconds; 0 = off (game default)
-local ROUNDEND_MAX = 55   -- the engine moves on by itself at about 60s
+-- End-of-round screen profiles (seconds): menu / win message / scoreboard.
+-- Instavote = Insta button. Regular = passed votes, Next Round, Force next,
+-- and natural round ends.
+local EOR_DEFAULTS = {
+	insta = { menu = 2, msg = 2, board = 2 },
+	regular = { menu = 15, msg = 4, board = 4 }
+}
+local EOR_MIN, EOR_MAX = 2, 60 -- values under 2s can crash the game
+-- How Insta / Next Round / Force next change the map:
+--  'endround' = mapList.endRound (real end of round, EOR screen with the profile above)
+--  'restart'  = mapList.runNextRound, then mapList.restartRound once the new map
+--               has loaded (no EOR screen; the restart resets scores)
+local MAP_CHANGE_MODES = { endround = true, restart = true }
+local RESTART_DELAY = 2 -- seconds after the new level loads
+local ROT_MIN_MAP_SECONDS = 180 -- maps shorter than this don't count at all in rotation stats (map, kills, deaths, score)
 local INSTA_COOLDOWN = 120 -- seconds between instavotes by regular players (admins bypass)
 
 local function Popup(p_Player, p_Title, p_Text)
@@ -98,11 +116,23 @@ function BiaManager:__init()
 	NetEvents:Subscribe('BiaSaveFav', self, self.OnSaveFav)
 	NetEvents:Subscribe('BiaDeleteFav', self, self.OnDeleteFav)
 	NetEvents:Subscribe('BiaApplyFav', self, self.OnApplyFav)
+	NetEvents:Subscribe('BiaClearAdminLog', self, self.OnClearAdminLog)
+	NetEvents:Subscribe('BiaGetEnemyKits', self, self.OnGetEnemyKits)
+	NetEvents:Subscribe('BiaSetEnemyKits', self, self.OnSetEnemyKits)
+	NetEvents:Subscribe('BiaGetRotationStats', self, self.OnGetRotationStats)
+	NetEvents:Subscribe('BiaGetEorProfiles', self, self.OnGetEorProfiles)
+	NetEvents:Subscribe('BiaSetEorProfile', self, self.OnSetEorProfile)
+	NetEvents:Subscribe('BiaSetMapChangeMode', self, self.OnSetMapChangeMode)
+	self:RegisterEorRcon()
+	NetEvents:Subscribe('BiaResetRotationStats', self, self.OnResetRotationStats)
 	NetEvents:Subscribe('BiaGetRoundEnd', self, self.OnGetRoundEnd)
 	NetEvents:Subscribe('BiaSetRoundEnd', self, self.OnSetRoundEnd)
 
 	Events:Subscribe('Server:RoundOver', self, self.OnRoundOver)
 	Events:Subscribe('Level:Destroy', self, self.OnLevelDestroy)
+	Events:Subscribe('Level:LoadResources', self, function(self)
+		self:SendEor('regular')
+	end)
 
 	-- Admin.lua (and anything else) logs through this event
 	Events:Subscribe('BIA:Log', self, self.OnLog)
@@ -163,6 +193,13 @@ function BiaManager:OpenDb()
 		[[CREATE TABLE IF NOT EXISTS bia_settings (
 			key TEXT PRIMARY KEY,
 			value TEXT
+		)]],
+		[[CREATE TABLE IF NOT EXISTS rotation_stats (
+			name TEXT PRIMARY KEY,
+			kills INTEGER,
+			deaths INTEGER,
+			score INTEGER,
+			maps INTEGER
 		)]]
 	}
 
@@ -174,7 +211,67 @@ function BiaManager:OpenDb()
 		end
 	end
 
+	-- one-time upgrade of an older mod.db: admin_log gets a unix-time column
+	-- so cleanup can compare real dates. ALTER fails harmlessly if it exists.
+	if not self.m_DbMigrated then
+		self.m_DbMigrated = true
+		SQL:Query('ALTER TABLE admin_log ADD COLUMN created INTEGER')
+		SQL:Query([[UPDATE admin_log SET created = CAST(strftime('%s', ts) AS INTEGER)
+			WHERE created IS NULL AND ts LIKE '____-__-__ __:__']])
+		SQL:Query([[UPDATE admin_log SET created = CAST(strftime('%s', 'now') AS INTEGER) WHERE created IS NULL]])
+	end
+
 	return true
+end
+
+-- current time from SQLite (no dependency on Lua's os library in VU)
+-- WHERE-clause fragment: row is NOT on today's date and NOT on one of the
+-- LOG_PROTECT_DAYS most recent dates (before today) that have entries.
+-- Bind: now, now (both unix seconds). Gaps don't count: with entries on
+-- 9/12, 9/15, 9/16 and new ones on 9/18, all four dates are kept.
+local LOG_UNPROTECTED_SQL = [[
+	date(created, 'unixepoch', 'localtime') <> date(?, 'unixepoch', 'localtime')
+	AND date(created, 'unixepoch', 'localtime') NOT IN (
+		SELECT d FROM (
+			SELECT DISTINCT date(created, 'unixepoch', 'localtime') AS d FROM admin_log
+			WHERE date(created, 'unixepoch', 'localtime') < date(?, 'unixepoch', 'localtime')
+			ORDER BY d DESC LIMIT ]] .. LOG_PROTECT_DAYS .. [[
+		)
+	)]]
+
+local function DbNow()
+	local s_Rows = SQL:Query([[SELECT CAST(strftime('%s', 'now') AS INTEGER) AS now,
+		strftime('%Y-%m-%d %H:%M', 'now', 'localtime') AS ts]])
+
+	if s_Rows and s_Rows[1] then
+		return tonumber(s_Rows[1]['now']) or 0, tostring(s_Rows[1]['ts'] or '')
+	end
+
+	return 0, Timestamp()
+end
+
+function BiaManager:GetSetting(p_Key)
+	if not self:OpenDb() then
+		return nil
+	end
+
+	local s_Rows = SQL:Query('SELECT value FROM bia_settings WHERE key = ?', p_Key)
+	SQL:Close()
+
+	if s_Rows and s_Rows[1] then
+		return s_Rows[1]['value']
+	end
+
+	return nil
+end
+
+function BiaManager:SetSetting(p_Key, p_Value)
+	if not self:OpenDb() then
+		return
+	end
+
+	SQL:Query('INSERT OR REPLACE INTO bia_settings (key, value) VALUES (?, ?)', p_Key, tostring(p_Value))
+	SQL:Close()
 end
 
 function BiaManager:LoadQueue()
@@ -277,23 +374,88 @@ function BiaManager:OnLog(p_Admin, p_Text)
 		self:LoadLog()
 	end
 
-	local s_Entry = { t = Timestamp(), text = tostring(p_Text or '') }
+	if not self:OpenDb() then
+		return
+	end
+
+	local s_Now, s_Ts = DbNow()
+	local s_Entry = { t = s_Ts, text = tostring(p_Text or '') }
 	table.insert(self.m_Log, 1, s_Entry)
 
 	while #self.m_Log > LOG_SEND do
 		table.remove(self.m_Log)
 	end
 
+	if not SQL:Query('INSERT INTO admin_log (ts, admin, text, created) VALUES (?, ?, ?, ?)', s_Ts, tostring(p_Admin or ''), s_Entry.text, s_Now) then
+		print('BIA - LOG - insert failed: ' .. tostring(SQL:Error()))
+	end
+
+	-- size cap, never touching protected days
+	SQL:Query('DELETE FROM admin_log WHERE id NOT IN (SELECT id FROM admin_log ORDER BY id DESC LIMIT ' .. LOG_KEEP .. ') AND ' .. LOG_UNPROTECTED_SQL,
+		s_Now, s_Now)
+	SQL:Close()
+end
+
+-- Runs on every level load, but only acts once every LOG_CLEAN_EVERY_DAYS:
+-- deletes rows LOG_MAX_AGE_DAYS old or older, except rows from today and
+-- from the LOG_PROTECT_DAYS most recent dates that have entries.
+function BiaManager:AutoCleanLog()
 	if not self:OpenDb() then
 		return
 	end
 
-	if not SQL:Query('INSERT INTO admin_log (ts, admin, text) VALUES (?, ?, ?)', s_Entry.t, tostring(p_Admin or ''), s_Entry.text) then
-		print('BIA - LOG - insert failed: ' .. tostring(SQL:Error()))
+	local s_Now = DbNow()
+	local s_LastRows = SQL:Query("SELECT value FROM bia_settings WHERE key = 'log_cleaned_at'")
+	local s_Last = s_LastRows and s_LastRows[1] and tonumber(s_LastRows[1]['value']) or nil
+
+	if s_Now <= 0 then
+		SQL:Close()
+		return
 	end
 
-	SQL:Query('DELETE FROM admin_log WHERE id NOT IN (SELECT id FROM admin_log ORDER BY id DESC LIMIT ' .. LOG_KEEP .. ')')
+	if s_Last == nil then
+		-- first run: start the 6-day clock now, delete nothing yet
+		SQL:Query("INSERT OR REPLACE INTO bia_settings (key, value) VALUES ('log_cleaned_at', ?)", tostring(s_Now))
+		SQL:Close()
+		return
+	end
+
+	if s_Now - s_Last < LOG_CLEAN_EVERY_DAYS * 86400 then
+		SQL:Close()
+		return
+	end
+
+	SQL:Query('DELETE FROM admin_log WHERE created <= ? AND ' .. LOG_UNPROTECTED_SQL,
+		s_Now - LOG_MAX_AGE_DAYS * 86400, s_Now, s_Now)
+	local s_Changed = SQL:Query('SELECT changes() AS n')
+	local s_Deleted = s_Changed and s_Changed[1] and tonumber(s_Changed[1]['n']) or 0
+	SQL:Query("INSERT OR REPLACE INTO bia_settings (key, value) VALUES ('log_cleaned_at', ?)", tostring(s_Now))
 	SQL:Close()
+
+	print('BIA - LOG - auto-clean removed ' .. s_Deleted .. ' entr(y/ies) older than ' .. LOG_MAX_AGE_DAYS .. ' days')
+
+	if s_Deleted > 0 then
+		self:LoadLog()
+	end
+end
+
+function BiaManager:OnClearAdminLog(p_Player)
+	-- clearing the log removes the audit trail, so it needs admin-list rights (or owner)
+	if not self:IsAllowed(p_Player.name, 'admin') then
+		Popup(p_Player, 'Not allowed.', 'Clearing the admin log needs the "Can Edit Rights" permission or server owner.')
+		return
+	end
+
+	if self:OpenDb() then
+		SQL:Query('DELETE FROM admin_log')
+		SQL:Close()
+	end
+
+	self.m_Log = {}
+	self.m_LogLoaded = true
+	-- the clear itself is the first entry of the fresh log
+	self:Log(p_Player.name, p_Player.name .. ' cleared the admin log')
+	NetEvents:SendTo('BiaAdminLog', p_Player, self.m_Log)
 end
 
 function BiaManager:Log(p_Admin, p_Text)
@@ -485,6 +647,10 @@ function BiaManager:OnGetMapQueue(p_Player)
 end
 
 function BiaManager:OnPlayerAuthenticated(p_Player)
+	self:OnGetEnemyKits(p_Player)
+	local s_E = self.m_EorActive or self:GetEor('regular')
+	NetEvents:SendTo('BIA:EorTimes', p_Player, s_E.menu, s_E.msg, s_E.board)
+
 	if #self.m_Queue > 0 or self.m_QueueRandom then
 		NetEvents:SendTo('MapQueue', p_Player, { random = self.m_QueueRandom, maps = self.m_Queue })
 	end
@@ -495,8 +661,17 @@ end
 -- throw away the map that was up next.
 function BiaManager:OnLevelLoaded(p_LevelName, p_GameMode, p_Round, p_RoundsPerMap)
 	self.m_WarmupUntil = SharedUtils:GetTime() + 12
-	self.m_RoundEndAt = nil
+	self.m_RoundEnding = false
+	self.m_LevelStart = SharedUtils:GetTime()
+
+	if self.m_RestartAfterLoad then
+		self.m_RestartAfterLoad = false
+		self.m_RestartAt = SharedUtils:GetTime() + RESTART_DELAY
+	end
+	self:SendEor('regular')
 	self:ClearMapVote()
+	self:AutoCleanLog()
+	self:StartRoundStats()
 
 	if not self.m_QueueLoaded then
 		self:LoadQueue()
@@ -545,7 +720,7 @@ function BiaManager:OnForceNextFromQueue(p_Player)
 
 	self:ApplyNextMap()
 	local s_Name = tostring(self.m_Queue[1].name)
-	RCON:SendCommand('mapList.runNextRound')
+	self:EndRoundWith('regular')
 	self:Log(p_Player.name, p_Player.name .. ' forced next map from queue: ' .. s_Name)
 	Popup(p_Player, 'Next map forced.', 'Loading: ' .. s_Name)
 end
@@ -628,7 +803,7 @@ function BiaManager:OnInstaMap(p_Player, p_Payload)
 	self.m_InstaReadyAt = s_Now + INSTA_COOLDOWN
 	self:ClearMapVote()
 	RCON:SendCommand('admin.say', { p_Player.name .. ' instavoted: ' .. s_Label .. ' - loading now.', 'all' })
-	RCON:SendCommand('mapList.runNextRound')
+	self:EndRoundWith('insta')
 	self:Log(p_Player.name, p_Player.name .. ' insta-loaded ' .. s_Label)
 end
 
@@ -1055,6 +1230,7 @@ function BiaManager:TryResolveMapVote(p_ForceExpire)
 			'all'
 		})
 		self:OnLog(s_Vote.starter, 'Map vote passed: ' .. s_Vote.name)
+		-- loads at the normal end of this round (Regular profile); Insta is the immediate option
 	else
 		RCON:SendCommand('admin.say', {
 			'Map vote failed for ' .. s_Vote.name .. ' (' .. s_Vote.yesCount .. 'Y / ' .. s_Vote.noCount .. 'N).',
@@ -1067,10 +1243,18 @@ function BiaManager:TryResolveMapVote(p_ForceExpire)
 end
 
 function BiaManager:OnEngineUpdate(p_Delta)
-	if self.m_RoundEndAt ~= nil and SharedUtils:GetTime() >= self.m_RoundEndAt then
-		self.m_RoundEndAt = nil
-		print('BIA - ROUNDEND - wait over, loading next map')
-		RCON:SendCommand('mapList.runNextRound')
+	if self.m_RestartAt ~= nil and SharedUtils:GetTime() >= self.m_RestartAt then
+		self.m_RestartAt = nil
+		print('BIA - MAPCHANGE - restartRound (resets scores)')
+		RCON:SendCommand('mapList.restartRound')
+	end
+
+	if self.m_EorLogAt ~= nil and SharedUtils:GetTime() >= self.m_EorLogAt then
+		self.m_EorLogAt = nil
+		local s_I, s_R = self:GetEor('insta'), self:GetEor('regular')
+		self:Log(self.m_EorLogBy, tostring(self.m_EorLogBy) .. string.format(
+			' set end-of-round timing: regular %d/%d/%ds (total %ds), instavote %d/%d/%ds',
+			s_R.menu, s_R.msg, s_R.board, s_R.menu + s_R.msg + s_R.board, s_I.menu, s_I.msg, s_I.board))
 	end
 
 	if self.m_MapVote == nil then
@@ -1320,69 +1504,460 @@ end
 
 -- Endregion
 
--- Region round-end wait
--- The end-of-round screen normally lasts about 60s (10s summary + 50s stats).
--- If an admin sets a shorter wait, runNextRound is sent that many seconds
--- after Server:RoundOver, skipping the rest of the EOR screen.
+-- Region enemy kit icons (server-wide, admin controlled)
 
-function BiaManager:GetRoundEndWait()
-	if self.m_RoundEndWait ~= nil then
-		return self.m_RoundEndWait
+function BiaManager:GetHideEnemyKits()
+	if self.m_HideEnemyKits == nil then
+		self.m_HideEnemyKits = self:GetSetting('hide_enemy_kits') == '1'
 	end
 
-	self.m_RoundEndWait = 0
+	return self.m_HideEnemyKits
+end
 
-	if self:OpenDb() then
-		local s_Rows = SQL:Query("SELECT value FROM bia_settings WHERE key = 'round_end_wait'")
-		SQL:Close()
+function BiaManager:OnGetEnemyKits(p_Player)
+	NetEvents:SendTo('BiaKitPolicy', p_Player, { hide = self:GetHideEnemyKits() })
+end
 
-		if s_Rows and s_Rows[1] then
-			self.m_RoundEndWait = tonumber(s_Rows[1]['value']) or 0
+function BiaManager:OnSetEnemyKits(p_Player, p_Payload)
+	if not self:IsAllowed(p_Player.name, 'any') then
+		return
+	end
+
+	local s_Hide = DecodePayload(p_Payload)
+	s_Hide = s_Hide == true or s_Hide == 'true' or s_Hide == 1
+
+	self.m_HideEnemyKits = s_Hide
+	self:SetSetting('hide_enemy_kits', s_Hide and '1' or '0')
+	NetEvents:Broadcast('BiaKitPolicy', { hide = s_Hide })
+	self:Log(p_Player.name, p_Player.name .. (s_Hide and ' hid' or ' showed') .. ' enemy kit icons on the scoreboard')
+end
+
+-- Endregion
+
+-- Region end of round (mapList.endRound + EOR screen profiles)
+-- mapList.runNextRound aborts the round: no end-of-round sequence, and the
+-- players' kills/deaths/score carry into the next map (the engine refuses
+-- to reset them from Lua). mapList.endRound <team> runs the real end of
+-- round, so stats reset normally. Its screen timing comes from the profile
+-- sent to ext/Shared/BiaEndOfRound.lua right before.
+
+function BiaManager:GetEor(p_Kind)
+	self.m_Eor = self.m_Eor or {}
+
+	if self.m_Eor[p_Kind] == nil then
+		local s_Def = EOR_DEFAULTS[p_Kind]
+		local s_Saved = json.decode(self:GetSetting('eor_' .. p_Kind) or '') or {}
+		local function C(p_V, p_D)
+			return math.max(EOR_MIN, math.min(EOR_MAX, tonumber(p_V) or p_D))
+		end
+
+		self.m_Eor[p_Kind] = {
+			menu = C(s_Saved.menu, s_Def.menu),
+			msg = C(s_Saved.msg, s_Def.msg),
+			board = C(s_Saved.board, s_Def.board)
+		}
+	end
+
+	return self.m_Eor[p_Kind]
+end
+
+-- push a profile to the server-side and every client-side copy of the module
+function BiaManager:SendEor(p_Kind)
+	local s_E = self:GetEor(p_Kind)
+	self.m_EorActive = s_E
+	Events:Dispatch('BIA:EorTimes', s_E.menu, s_E.msg, s_E.board)
+	NetEvents:Broadcast('BIA:EorTimes', s_E.menu, s_E.msg, s_E.board)
+end
+
+function BiaManager:WinningTeam()
+	local s_Teams = SharedUtils:GetCurrentGameMode() == 'SquadDeathMatch0' and 4 or 2
+	local s_Best, s_BestTickets = 1, nil
+
+	for l_Team = 1, s_Teams do
+		local s_T = TicketManager:GetTicketCount(l_Team) or 0
+
+		if s_BestTickets == nil or s_T > s_BestTickets then
+			s_Best, s_BestTickets = l_Team, s_T
 		end
 	end
 
-	return self.m_RoundEndWait
+	return s_Best
 end
 
-function BiaManager:OnGetRoundEnd(p_Player)
-	NetEvents:SendTo('BiaRoundEnd', p_Player, { seconds = self:GetRoundEndWait() })
+-- End the current round with an EOR profile; the next map loads after it.
+function BiaManager:GetMapChangeMode()
+	if self.m_MapChangeMode == nil then
+		local s_Saved = self:GetSetting('map_change_mode')
+		self.m_MapChangeMode = MAP_CHANGE_MODES[s_Saved] and s_Saved or 'endround'
+	end
+
+	return self.m_MapChangeMode
 end
 
-function BiaManager:OnSetRoundEnd(p_Player, p_Payload)
+function BiaManager:OnSetMapChangeMode(p_Player, p_Payload)
 	if not self:IsAllowed(p_Player.name, 'map') then
 		return
 	end
 
-	local s_Seconds = math.floor(tonumber(DecodePayload(p_Payload) or p_Payload) or 0)
+	local s_Mode = DecodePayload(p_Payload)
 
-	if s_Seconds > 0 then
-		s_Seconds = math.max(ROUNDEND_MIN, math.min(ROUNDEND_MAX, s_Seconds))
+	if type(s_Mode) ~= 'string' then
+		s_Mode = tostring(p_Payload)
+	end
+
+	if not MAP_CHANGE_MODES[s_Mode] then
+		return
+	end
+
+	self.m_MapChangeMode = s_Mode
+	self:SetSetting('map_change_mode', s_Mode)
+	self:Log(p_Player.name, p_Player.name .. ' set map change method to ' .. (s_Mode == 'restart' and 'next map + restart' or 'end round'))
+	NetEvents:Broadcast('BiaEorProfiles', self:EorPayload())
+end
+
+-- 'restart' mode: hard switch now, restartRound once the new map is loaded
+function BiaManager:NextAndRestart(p_Kind)
+	self.m_RoundEnding = true
+	self.m_RestartAfterLoad = true
+	print('BIA - MAPCHANGE - runNextRound, restartRound after load (' .. p_Kind .. ')')
+	RCON:SendCommand('mapList.runNextRound')
+end
+
+function BiaManager:EndRoundWith(p_Kind)
+	if self.m_RoundEnding then
+		print('BIA - EOR - round already ending, ignored (' .. p_Kind .. ')')
+		return
+	end
+
+	if self:GetMapChangeMode() == 'restart' then
+		self:NextAndRestart(p_Kind)
+		return
+	end
+
+	self:SendEor(p_Kind)
+	local s_Resp = RCON:SendCommand('mapList.endRound', { tostring(self:WinningTeam()) })
+
+	if s_Resp ~= nil and s_Resp[1] == 'OK' then
+		self.m_RoundEnding = true
+		local s_E = self:GetEor(p_Kind)
+		print('BIA - EOR - endRound (' .. p_Kind .. ', next map in ~' .. (s_E.menu + s_E.msg + s_E.board) .. 's)')
 	else
-		s_Seconds = 0
+		-- e.g. called during pre-round: fall back to the old hard switch
+		print('BIA - EOR - mapList.endRound refused (' .. tostring(s_Resp and s_Resp[1]) .. '), using runNextRound')
+		RCON:SendCommand('mapList.runNextRound')
+	end
+end
+
+function BiaManager:EorPayload()
+	return { insta = self:GetEor('insta'), regular = self:GetEor('regular'), mode = self:GetMapChangeMode(), min = EOR_MIN }
+end
+
+function BiaManager:OnGetEorProfiles(p_Player)
+	NetEvents:SendTo('BiaEorProfiles', p_Player, self:EorPayload())
+end
+
+function BiaManager:OnSetEorProfile(p_Player, p_Payload)
+	if not self:IsAllowed(p_Player.name, 'map') then
+		return
 	end
 
-	self.m_RoundEndWait = s_Seconds
+	local s_Data = DecodePayload(p_Payload)
 
-	if self:OpenDb() then
-		SQL:Query('INSERT OR REPLACE INTO bia_settings (key, value) VALUES (?, ?)', 'round_end_wait', tostring(s_Seconds))
-		SQL:Close()
+	if type(s_Data) ~= 'table' or EOR_DEFAULTS[s_Data.kind] == nil then
+		return
 	end
 
-	self:Log(p_Player.name, p_Player.name .. ' set round end wait to ' .. (s_Seconds > 0 and (s_Seconds .. 's') or 'game default'))
-	NetEvents:Broadcast('BiaRoundEnd', { seconds = s_Seconds })
+	local function Clamp(p_V, p_Old)
+		local s_V = math.floor(tonumber(p_V) or p_Old)
+		return math.max(EOR_MIN, math.min(EOR_MAX, s_V))
+	end
+
+	local s_Old = self:GetEor(s_Data.kind)
+	local s_New = { menu = Clamp(s_Data.menu, s_Old.menu), msg = Clamp(s_Data.msg, s_Old.msg), board = Clamp(s_Data.board, s_Old.board) }
+	self.m_Eor[s_Data.kind] = s_New
+	self:SetSetting('eor_' .. s_Data.kind, json.encode(s_New))
+
+	-- regular is the live profile between map changes
+	if s_Data.kind == 'regular' and not self.m_RoundEnding then
+		self:SendEor('regular')
+	end
+
+	-- one log line, 15s after the last change
+	self.m_EorLogAt = SharedUtils:GetTime() + 15
+	self.m_EorLogBy = p_Player.name
+	NetEvents:Broadcast('BiaEorProfiles', self:EorPayload())
+end
+
+-- Old "Round end wait" row = total length of the Regular profile.
+-- Changing it adjusts the Regular menu time (message + scoreboard unchanged).
+function BiaManager:GetRoundEndWait()
+	local s_R = self:GetEor('regular')
+	return s_R.menu + s_R.msg + s_R.board
+end
+
+function BiaManager:OnGetRoundEnd(p_Player)
+	self:OnGetEorProfiles(p_Player)
+end
+
+function BiaManager:OnSetRoundEnd(p_Player, p_Payload)
+	local s_Total = tonumber(DecodePayload(p_Payload) or p_Payload)
+
+	if s_Total == nil then
+		return
+	end
+
+	local s_R = self:GetEor('regular')
+	self:OnSetEorProfile(p_Player, { kind = 'regular', menu = s_Total - s_R.msg - s_R.board, msg = s_R.msg, board = s_R.board })
+end
+
+-- RCON compatibility with the standalone mod: vars.endOfRoundTime <menu> <msg> <board>
+-- sets the Regular profile.
+function BiaManager:RegisterEorRcon()
+	local s_Ok = pcall(function()
+		RCON:RegisterCommand('vars.endOfRoundTime', RemoteCommandFlag.RequiresLogin, function(p_Command, p_Args, p_LoggedIn)
+			local s_R = self:GetEor('regular')
+
+			if p_Args ~= nil and p_Args[1] ~= nil then
+				local s_New = {
+					menu = math.max(EOR_MIN, math.min(EOR_MAX, tonumber(p_Args[1]) or s_R.menu)),
+					msg = math.max(EOR_MIN, math.min(EOR_MAX, tonumber(p_Args[2]) or s_R.msg)),
+					board = math.max(EOR_MIN, math.min(EOR_MAX, tonumber(p_Args[3]) or s_R.board))
+				}
+				self.m_Eor.regular = s_New
+				self:SetSetting('eor_regular', json.encode(s_New))
+
+				if not self.m_RoundEnding then
+					self:SendEor('regular')
+				end
+
+				NetEvents:Broadcast('BiaEorProfiles', self:EorPayload())
+				s_R = s_New
+			end
+
+			return { 'OK', tostring(s_R.menu), tostring(s_R.msg), tostring(s_R.board) }
+		end)
+	end)
+
+	if not s_Ok then
+		print('BIA - EOR - vars.endOfRoundTime already registered (is the standalone EOR mod still installed? remove it)')
+	end
 end
 
 function BiaManager:OnRoundOver(p_RoundTime, p_WinningTeam)
-	local s_Wait = self:GetRoundEndWait()
-
-	if s_Wait > 0 then
-		self.m_RoundEndAt = SharedUtils:GetTime() + s_Wait
-		print('BIA - ROUNDEND - round over, next map in ' .. s_Wait .. 's')
-	end
+	self.m_RoundEnding = true
+	self:BankRoundStats()
 end
 
 function BiaManager:OnLevelDestroy()
-	self.m_RoundEndAt = nil
+	-- maps ended by a hard switch never fire RoundOver
+	self:BankRoundStats()
+	-- back to Regular BEFORE the next level's EOR instances load, so an
+	-- Instavote profile never leaks into the next map's natural round end
+	self:SendEor('regular')
+end
+
+-- Endregion
+
+-- Region per-round stats + rotation totals
+-- Round stats: reset on every Level:Loaded. If the engine refuses the write
+-- (read-only property), a per-player baseline makes the BANKED numbers
+-- correct anyway (delta = now - baseline).
+-- Rotation totals: banked once per map (RoundOver, or Level:Destroy for maps
+-- skipped with Next Round). A rotation = as many maps as the queue holds, or
+-- the whole map list without a queue; then the totals start over.
+
+function BiaManager:StatsOf(p_Player)
+	return tonumber(p_Player.kills) or 0, tonumber(p_Player.deaths) or 0, tonumber(p_Player.score) or 0
+end
+
+function BiaManager:StartRoundStats()
+	self.m_StatsBanked = false
+	self.m_StatBase = {}
+	local s_ResetOk = true
+
+	for _, l_Player in pairs(PlayerManager:GetPlayers()) do
+		local s_Ok = pcall(function()
+			l_Player.kills = 0
+			l_Player.deaths = 0
+			l_Player.score = 0
+		end)
+
+		if not s_Ok then
+			s_ResetOk = false
+		end
+
+		local s_K, s_D, s_S = self:StatsOf(l_Player)
+		self.m_StatBase[l_Player.name] = { k = s_K, d = s_D, s = s_S }
+	end
+
+	if not s_ResetOk and not self.m_ResetWarned then
+		self.m_ResetWarned = true
+		print('BIA - STATS - player kills/deaths/score are read-only here; rotation totals use per-map baselines')
+	end
+
+	-- rotation rollover
+	local s_Played = tonumber(self:GetSetting('rot_maps_played')) or 0
+	local s_Length = #self.m_Queue > 0 and #self.m_Queue or (self.m_MapCount > 0 and self.m_MapCount or 0)
+
+	if s_Length > 0 and s_Played >= s_Length then
+		self:ClearRotationStats()
+		print('BIA - STATS - rotation complete (' .. s_Played .. ' maps), totals reset')
+	end
+end
+
+function BiaManager:RoundDelta(p_Player)
+	local s_K, s_D, s_S = self:StatsOf(p_Player)
+	local s_Base = (self.m_StatBase or {})[p_Player.name]
+
+	-- player joined mid-round: no baseline, everything is this round
+	if s_Base == nil then
+		return s_K, s_D, s_S
+	end
+
+	return math.max(0, s_K - s_Base.k), math.max(0, s_D - s_Base.d), math.max(0, s_S - s_Base.s)
+end
+
+-- a map counts as played only after ROT_MIN_MAP_SECONDS (pre-round alone doesn't)
+function BiaManager:MapCounts()
+	return self.m_LevelStart ~= nil and (SharedUtils:GetTime() - self.m_LevelStart) >= ROT_MIN_MAP_SECONDS
+end
+
+function BiaManager:BankRoundStats()
+	if self.m_StatsBanked or self.m_StatBase == nil then
+		return
+	end
+
+	self.m_StatsBanked = true
+
+	-- too short (e.g. skipped right after pre-round): nothing from it counts
+	if not self:MapCounts() then
+		print('BIA - STATS - map lasted under ' .. ROT_MIN_MAP_SECONDS .. 's, not counted in rotation totals')
+		return
+	end
+
+	local s_Counts = true
+
+	if not self:OpenDb() then
+		return
+	end
+
+	local s_InTx = SQL:Query('BEGIN TRANSACTION') and true or false
+	local s_MapInc = s_Counts and 1 or 0
+
+	for _, l_Player in pairs(PlayerManager:GetPlayers()) do
+		local s_K, s_D, s_S = self:RoundDelta(l_Player)
+		-- update-then-insert (works on any SQLite version, unlike ON CONFLICT)
+		SQL:Query('UPDATE rotation_stats SET kills = kills + ?, deaths = deaths + ?, score = score + ?, maps = maps + ? WHERE name = ?',
+			s_K, s_D, s_S, s_MapInc, l_Player.name)
+		local s_Changed = SQL:Query('SELECT changes() AS n')
+
+		if not (s_Changed and s_Changed[1] and tonumber(s_Changed[1]['n']) == 1) then
+			SQL:Query('INSERT INTO rotation_stats (name, kills, deaths, score, maps) VALUES (?, ?, ?, ?, ?)', l_Player.name, s_K, s_D, s_S, s_MapInc)
+		end
+	end
+
+	local s_Rows = SQL:Query("SELECT value FROM bia_settings WHERE key = 'rot_maps_played'")
+	local s_Played = (s_Rows and s_Rows[1] and tonumber(s_Rows[1]['value']) or 0) + s_MapInc
+	SQL:Query("INSERT OR REPLACE INTO bia_settings (key, value) VALUES ('rot_maps_played', ?)", tostring(s_Played))
+
+	if s_InTx then
+		SQL:Query('COMMIT')
+	end
+
+	SQL:Close()
+	print('BIA - STATS - map banked into rotation totals (' .. s_Played .. ' map(s) this rotation' .. (s_Counts and '' or ', this one too short to count') .. ')')
+end
+
+function BiaManager:ClearRotationStats()
+	if self:OpenDb() then
+		SQL:Query('DELETE FROM rotation_stats')
+		SQL:Query("INSERT OR REPLACE INTO bia_settings (key, value) VALUES ('rot_maps_played', '0')")
+		SQL:Close()
+	end
+end
+
+-- totals + the live (not yet banked) current map, sorted by score
+function BiaManager:OnGetRotationStats(p_Player)
+	local s_ByName = {}
+	local s_Played = 0
+
+	if self:OpenDb() then
+		local s_Rows = SQL:Query('SELECT * FROM rotation_stats')
+
+		if s_Rows then
+			for _, l_Row in pairs(s_Rows) do
+				local s_Name = tostring(l_Row['name'])
+				s_ByName[s_Name] = {
+					name = s_Name,
+					k = tonumber(l_Row['kills']) or 0,
+					d = tonumber(l_Row['deaths']) or 0,
+					s = tonumber(l_Row['score']) or 0,
+					m = tonumber(l_Row['maps']) or 0
+				}
+			end
+		end
+
+		local s_P = SQL:Query("SELECT value FROM bia_settings WHERE key = 'rot_maps_played'")
+		s_Played = s_P and s_P[1] and tonumber(s_P[1]['value']) or 0
+		SQL:Close()
+	end
+
+	-- the running map only shows up once it's long enough to count
+	local s_Live = not self.m_StatsBanked and self:MapCounts()
+	local s_LiveMap = s_Live and 1 or 0
+
+	for _, l_Player in pairs(PlayerManager:GetPlayers()) do
+		local s_E = s_ByName[l_Player.name]
+
+		if s_E == nil then
+			s_E = { name = l_Player.name, k = 0, d = 0, s = 0, m = 0 }
+			s_ByName[l_Player.name] = s_E
+		end
+
+		s_E.online = true
+
+		if s_Live then
+			local s_K, s_D, s_S = self:RoundDelta(l_Player)
+			s_E.k = s_E.k + s_K
+			s_E.d = s_E.d + s_D
+			s_E.s = s_E.s + s_S
+			s_E.m = s_E.m + s_LiveMap
+		end
+	end
+
+	local s_List = {}
+
+	for _, l_E in pairs(s_ByName) do
+		table.insert(s_List, l_E)
+	end
+
+	table.sort(s_List, function(a, b)
+		return a.s > b.s
+	end)
+
+	while #s_List > 128 do
+		table.remove(s_List)
+	end
+
+	local s_Length = #self.m_Queue > 0 and #self.m_Queue or self.m_MapCount
+
+	NetEvents:SendTo('BiaRotationStats', p_Player, {
+		played = s_Played + s_LiveMap,
+		length = s_Length,
+		rows = s_List
+	})
+end
+
+function BiaManager:OnResetRotationStats(p_Player)
+	if not self:IsAllowed(p_Player.name, 'any') then
+		return
+	end
+
+	self:ClearRotationStats()
+	-- the current map counts from now
+	self:StartRoundStats()
+	self:Log(p_Player.name, p_Player.name .. ' reset the rotation stats')
+	self:OnGetRotationStats(p_Player)
 end
 
 -- Endregion

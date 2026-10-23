@@ -50,6 +50,8 @@ function Admin:__init()
 
 	-- Manage Presets
 	NetEvents:Subscribe('ManagePresets', self, self.OnManagePresets)
+	Events:Subscribe('Level:LoadResources', self, self.RestorePreset)
+	Events:Subscribe('Level:Loaded', self, self.RestorePreset)
 
 	-- Manage ModSettings
 	NetEvents:Subscribe('ResetModSettings', self, self.OnResetModSettings)
@@ -326,7 +328,9 @@ function Admin:OnRunNextRound(p_Player)
 		return
 	end
 
-	RCON:SendCommand('mapList.runNextRound')
+	-- real end of round (Regular EOR profile) instead of aborting the round,
+	-- so scores reset; see BiaManager:EndRoundWith
+	require('BiaManager'):EndRoundWith('regular')
 	Log(p_Player.name, p_Player.name .. " ran the next round")
 end
 
@@ -378,11 +382,7 @@ end
 
 -- Region Manage Presets
 
-function Admin:OnManagePresets(p_Player, p_Args)
-	if not self:Allowed(p_Player, 'CanAlterServerSettings', 'MANAGE PRESETS', true) then
-		return
-	end
-
+function Admin:ApplyPreset(p_Args)
 	local s_Preset = p_Args[1]
 
 	if s_Preset == "normal" then
@@ -396,7 +396,55 @@ function Admin:OnManagePresets(p_Player, p_Args)
 	elseif s_Preset == "custom" then
 		m_GeneralSettings:PresetCustom(p_Args)
 	else
+		return false
+	end
+
+	return true
+end
+
+-- Once per server start, before the first level loads (so vars apply to that
+-- level). Overrides the same vars from startup.txt.
+function Admin:RestorePreset()
+	if self.m_PresetRestored then
 		return
+	end
+
+	self.m_PresetRestored = true
+	local s_Json = require('BiaManager'):GetSetting('active_preset')
+
+	if s_Json == nil or s_Json == '' then
+		return
+	end
+
+	local s_Args = json.decode(s_Json)
+
+	if type(s_Args) ~= 'table' then
+		return
+	end
+
+	local s_Ok, s_Err = pcall(function()
+		self:ApplyPreset(s_Args)
+	end)
+
+	print("ADMIN - PRESET - restored saved preset " .. string.upper(tostring(s_Args[1])) .. (s_Ok and "" or (" FAILED: " .. tostring(s_Err))))
+end
+
+function Admin:OnManagePresets(p_Player, p_Args)
+	if not self:Allowed(p_Player, 'CanAlterServerSettings', 'MANAGE PRESETS', true) then
+		return
+	end
+
+	local s_Preset = p_Args[1]
+
+	if not self:ApplyPreset(p_Args) then
+		return
+	end
+
+	-- remembered in mod.db and re-applied after a server restart
+	local s_Json = json.encode(p_Args)
+
+	if s_Json ~= nil then
+		require('BiaManager'):SetSetting('active_preset', s_Json)
 	end
 
 	Log(p_Player.name, p_Player.name .. " changed the preset to " .. string.upper(tostring(s_Preset)))

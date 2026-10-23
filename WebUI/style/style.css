@@ -187,19 +187,24 @@ body {
   border-width: 8px 7.5px 0 7.5px;
   border-color: #ffffff transparent;
 }
-.sbBody > div:hover {
+.sbBody > div:hover,
+.sbBody > div.biaHover {
   background: linear-gradient(#fff, #bfbfbfd6) !important;
   color: #000;
   text-shadow: 0px 0px 7px #000406a3;
 }
 .sbBody > div:hover .sbCell #action,
 #localPlayerScoreboard .sbCell #action,
-#biaPinnedRow .sbCell #action {
+#biaPinnedRow .sbCell #action,
+.sbBody > div.biaHover .sbCell #action {
   border-color: #333 transparent transparent transparent;
 }
 .sbBody > div:hover .sbCell #action:hover,
 #localPlayerScoreboard .sbCell #action:hover,
-#biaPinnedRow .sbCell #action:hover {
+#biaPinnedRow .sbCell #action:hover,
+.sbBody > div.biaHover .sbCell #action.biaHover,
+#localPlayerScoreboard .sbCell #action.biaHover,
+#biaPinnedRow .sbCell #action.biaHover {
   border-color: #000 transparent;
 }
 #table1,
@@ -450,7 +455,8 @@ label {
 #squadMates.isDead {
   color: #4a4a4a;
 }
-#squadMates.isDead:hover {
+#squadMates.isDead:hover,
+#squadMates.isDead.biaHover {
   color: #000;
 }
 #name1,
@@ -469,7 +475,9 @@ label {
   background-image: none !important;
 }
 .isDead:hover #name1,
-#squadMates.isDead:hover #name1 {
+#squadMates.isDead:hover #name1,
+.isDead.biaHover #name1,
+#squadMates.isDead.biaHover #name1 {
   background-image: url(/images/Dead-Black.png) !important;
 }
 #localPlayerScoreboard.ID_M_ASSAULT #name1,
@@ -483,7 +491,9 @@ label {
   background-image: url(/images/Assault-White.png);
 }
 .ID_M_ASSAULT:hover #name1,
-#squadMates.ID_M_ASSAULT:hover #name1 {
+#squadMates.ID_M_ASSAULT:hover #name1,
+.ID_M_ASSAULT.biaHover #name1,
+#squadMates.ID_M_ASSAULT.biaHover #name1 {
   background-image: url(/images/Assault-Black.png);
 }
 #localPlayerScoreboard.ID_M_ENGINEER #name1,
@@ -497,7 +507,9 @@ label {
   background-image: url(/images/Engineer-White.png);
 }
 .ID_M_ENGINEER:hover #name1,
-#squadMates.ID_M_ENGINEER:hover #name1 {
+#squadMates.ID_M_ENGINEER:hover #name1,
+.ID_M_ENGINEER.biaHover #name1,
+#squadMates.ID_M_ENGINEER.biaHover #name1 {
   background-image: url(/images/Engineer-Black.png);
 }
 #localPlayerScoreboard.ID_M_SUPPORT #name1,
@@ -511,7 +523,9 @@ label {
   background-image: url(/images/Support-White.png);
 }
 .ID_M_SUPPORT:hover #name1,
-#squadMates.ID_M_SUPPORT:hover #name1 {
+#squadMates.ID_M_SUPPORT:hover #name1,
+.ID_M_SUPPORT.biaHover #name1,
+#squadMates.ID_M_SUPPORT.biaHover #name1 {
   background-image: url(/images/Support-Black.png);
 }
 #localPlayerScoreboard.ID_M_RECON #name1,
@@ -526,7 +540,9 @@ label {
   background-size: 45px 45px;
 }
 .ID_M_RECON:hover #name1,
-#squadMates.ID_M_RECON:hover #name1 {
+#squadMates.ID_M_RECON:hover #name1,
+.ID_M_RECON.biaHover #name1,
+#squadMates.ID_M_RECON.biaHover #name1 {
   background-image: url(/images/Recon-Black.png);
 }
 /* Endregion */
@@ -2471,7 +2487,13 @@ not from /style/. */
 .isDead:hover #name4,
 #squadMates.isDead:hover #name2,
 #squadMates.isDead:hover #name3,
-#squadMates.isDead:hover #name4 {
+#squadMates.isDead:hover #name4,
+.isDead.biaHover #name2,
+.isDead.biaHover #name3,
+.isDead.biaHover #name4,
+#squadMates.isDead.biaHover #name2,
+#squadMates.isDead.biaHover #name3,
+#squadMates.isDead.biaHover #name4 {
   background-image: url(/images/Dead-Black.png) !important;
 }
 #localPlayerScoreboard.ID_M_ASSAULT #name2,
@@ -2497,7 +2519,13 @@ not from /style/. */
 .ID_M_ASSAULT:hover #name4,
 #squadMates.ID_M_ASSAULT:hover #name2,
 #squadMates.ID_M_ASSAULT:hover #name3,
-#squadMates.ID_M_ASSAULT:hover #name4 {
+#squadMates.ID_M_ASSAULT:hover #name4,
+.ID_M_ASSAULT.biaHover #name2,
+.ID_M_ASSAULT.biaHover #name3,
+.ID_M_ASSAULT.biaHover #name4,
+#squadMates.ID_M_ASSAULT.biaHover #name2,
+#squadMates.ID_M_ASSAULT.biaHover #name3,
+#squadMates.ID_M_ASSAULT.biaHover #name4 {
   background-image: url(/images/Assault-Black.png);
 }
 #localPlayerScoreboard.ID_M_ENGINEER #name2,
@@ -2523,7 +2551,13 @@ not from /style/. */
 .ID_M_ENGINEER:hover #name4,
 #squadMates.ID_M_ENGINEER:hover #name2,
 #squadMates.ID_M_ENGINEER:hover #name3,
-#squadMates.ID_M_ENGINEER:hover #name4 {
+#squadMates.ID_M_ENGINEER:hover #name4,
+.ID_M_ENGINEER.biaHover #name2,
+.ID_M_ENGINEER.biaHover #name3,
+.ID_M_ENGINEER.biaHover #name4,
+#squadMates.ID_M_ENGINEER.biaHover #name2,
+#squadMates.ID_M_ENGINEER.biaHover #name3,
+#squadMates.ID_M_ENGINEER.biaHover #name4 {
   background-image: url(/images/Engineer-Black.png);
 }
 #localPlayerScoreboard.ID_M_SUPPORT #name2,
@@ -2549,7 +2583,13 @@ not from /style/. */
 .ID_M_SUPPORT:hover #name4,
 #squadMates.ID_M_SUPPORT:hover #name2,
 #squadMates.ID_M_SUPPORT:hover #name3,
-#squadMates.ID_M_SUPPORT:hover #name4 {
+#squadMates.ID_M_SUPPORT:hover #name4,
+.ID_M_SUPPORT.biaHover #name2,
+.ID_M_SUPPORT.biaHover #name3,
+.ID_M_SUPPORT.biaHover #name4,
+#squadMates.ID_M_SUPPORT.biaHover #name2,
+#squadMates.ID_M_SUPPORT.biaHover #name3,
+#squadMates.ID_M_SUPPORT.biaHover #name4 {
   background-image: url(/images/Support-Black.png);
 }
 #localPlayerScoreboard.ID_M_RECON #name2,
@@ -2575,12 +2615,20 @@ not from /style/. */
 .ID_M_RECON:hover #name4,
 #squadMates.ID_M_RECON:hover #name2,
 #squadMates.ID_M_RECON:hover #name3,
-#squadMates.ID_M_RECON:hover #name4 {
+#squadMates.ID_M_RECON:hover #name4,
+.ID_M_RECON.biaHover #name2,
+.ID_M_RECON.biaHover #name3,
+.ID_M_RECON.biaHover #name4,
+#squadMates.ID_M_RECON.biaHover #name2,
+#squadMates.ID_M_RECON.biaHover #name3,
+#squadMates.ID_M_RECON.biaHover #name4 {
   background-image: url(/images/Recon-Black.png);
 }
 
 /* row hover, mirrored for tables 2-4 (was #table1-only via tr:hover) */
-.sbBody > div:hover {
+.sbBody > div:hover,
+mirrored for tables 2-4 (was #table1-only via tr.biaHover) */
+.sbBody > div.biaHover {
   background: linear-gradient(#fff, #bfbfbfd6);
   color: #000;
 }
@@ -4747,7 +4795,15 @@ body {
 #biaPinnedRow.isDead #name1,
 #biaPinnedRow.isDead #name2,
 #biaPinnedRow.isDead #name3,
-#biaPinnedRow.isDead #name4 {
+#biaPinnedRow.isDead #name4,
+.isDead.biaHover #name1,
+.isDead.biaHover #name2,
+.isDead.biaHover #name3,
+.isDead.biaHover #name4,
+#squadMates.isDead.biaHover #name1,
+#squadMates.isDead.biaHover #name2,
+#squadMates.isDead.biaHover #name3,
+#squadMates.isDead.biaHover #name4 {
   background-image: url(/images/Dead-Black.png) !important;
 }
 
@@ -4803,4 +4859,334 @@ body {
 }
 #tables.biaSquadMode > .sbTable {
   margin: 0px;
+}
+
+
+/* ==========================================================================
+   v3.5
+   ========================================================================== */
+/* squad deathmatch: wider squad name, score sits further right */
+#tables.biaSquadMode #team1,
+#tables.biaSquadMode #team2,
+#tables.biaSquadMode #team3,
+#tables.biaSquadMode #team4 {
+  width: 150px;
+  flex-basis: 150px;
+}
+#tables.biaSquadMode #tickets1,
+#tables.biaSquadMode #tickets2,
+#tables.biaSquadMode #tickets3,
+#tables.biaSquadMode #tickets4 {
+  width: 146px;
+  flex-basis: 146px;
+}
+
+/* enemy-kit toggle, sits just above the right table */
+#biaKitToggle {
+  display: none;
+  flex-direction: row;
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: auto;
+  height: 22px;
+  margin: 0px;
+  white-space: nowrap;
+  padding: 0 8px;
+  z-index: 15;
+  align-items: center;
+  font-size: 13px;
+  color: #ffffff;
+  cursor: pointer;
+  background: rgba(0, 0, 0, 0.5);
+}
+#biaKitToggle span {
+  display: flex;
+  margin-left: 6px;
+}
+#biaKitToggle:hover {
+  background: rgba(115, 195, 255, 0.35);
+}
+
+/* admin log tools */
+.biaLogTools {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-shrink: 0;
+  height: 30px;
+  padding: 0 10px;
+  background: rgba(0, 0, 0, 0.35);
+}
+.biaLogTools .biaListBtn {
+  flex-shrink: 0;
+}
+.biaListBtn.biaDanger {
+  background: #a32020;
+  color: #ffffff;
+}
+.biaLogNote {
+  display: flex;
+  margin-left: 12px;
+  font-size: 11px;
+  color: #9ab;
+  white-space: normal;
+}
+
+#biaKitToggle .mapQueueToggleBox {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+
+/* ==========================================================================
+   v3.7
+   ========================================================================== */
+/* Round / Rotation switch (top-left above the tables, everyone) */
+#biaViewToggle {
+  display: none;
+  flex-direction: row;
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  height: 22px;
+  z-index: 15;
+  background: rgba(0, 0, 0, 0.5);
+}
+.biaSeg {
+  display: flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 10px;
+  font-size: 13px;
+  color: #ffffff;
+  cursor: pointer;
+}
+.biaSeg.active {
+  background: #73c3ff;
+  color: #000000;
+}
+.biaSeg:hover {
+  background: rgba(255, 255, 255, 0.85);
+  color: #000000;
+}
+
+/* rotation totals panel (takes the tables' place) */
+#biaRotPanel {
+  display: none;
+  flex-direction: column;
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 1074px;
+  height: 400px;
+  z-index: 5;
+  background: rgba(4, 8, 12, 0.88);
+}
+#biaRotHead {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-shrink: 0;
+  height: 30px;
+  padding: 0 10px;
+  color: #ffffff;
+  background: linear-gradient(#73c3ff, #7ac6ffad);
+}
+.biaRotTitle {
+  display: flex;
+  font-size: 17px;
+  margin-right: auto;
+}
+#biaRotCols,
+.biaRotRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-shrink: 0;
+  height: 28px;
+}
+#biaRotCols {
+  color: #b9c4cc;
+  font-size: 14px;
+  background: rgba(0, 0, 0, 0.45);
+}
+#biaRotBody {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.biaRotRow {
+  color: #ffffff;
+  font-size: 16px;
+  background: linear-gradient(rgba(2, 3, 4, 0.68), rgba(35, 46, 53, 0.65));
+  margin-bottom: 1px;
+}
+.biaRotRow.biaRotMe {
+  background: linear-gradient(rgba(255, 156, 55, 0.95), rgba(181, 109, 35, 0.95));
+  color: #000000;
+}
+.biaRotRow.biaRotOffline {
+  color: #8a96a0;
+}
+.biaRc {
+  display: flex;
+  justify-content: flex-end;
+  width: 90px;
+  flex-shrink: 0;
+  padding-right: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.biaRcPos {
+  width: 46px;
+  justify-content: flex-start;
+  padding-left: 10px;
+}
+.biaRcName {
+  width: 420px;
+  justify-content: flex-start;
+}
+.biaRcScore {
+  width: 120px;
+}
+
+
+/* ==========================================================================
+   v3.8
+   ========================================================================== */
+/* end-of-round profile rows (Instavote / Regular load) */
+.biaEorRow .biaEorName {
+  width: 96px;
+  flex-shrink: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.biaEorLbl {
+  display: flex;
+  align-items: center;
+  height: 22px;
+  margin: 0 3px 0 8px;
+  font-size: 12px;
+  color: #b9c4cc;
+  white-space: nowrap;
+}
+.biaEorVal {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 22px;
+  margin: 0 2px;
+  font-size: 12px;
+  color: #ffffff;
+  background: rgba(0, 0, 0, 0.35);
+}
+/* rotation view: alternate row shade (cool grey vs a hint of steel blue) */
+.biaRotRow.biaRotAlt {
+  background: linear-gradient(rgba(34, 52, 66, 0.78), rgba(48, 70, 86, 0.74));
+}
+.biaRotRow.biaRotMe.biaRotAlt {
+  background: linear-gradient(rgba(255, 156, 55, 0.95), rgba(181, 109, 35, 0.95));
+}
+
+
+/* ==========================================================================
+   v3.9
+   ========================================================================== */
+/* favorites dropdown was painted under the Say/Yell row (#biaAdminTools is a
+   later sibling with the same z-index): lift the whole queue panel above it */
+#mapQueuePanel {
+  position: relative;
+  z-index: 20;
+}
+#biaFavRow {
+  z-index: 25;
+}
+#biaFavList {
+  z-index: 60;
+}
+
+/* map change method switch */
+.biaToolRow .biaSeg {
+  height: 22px;
+  margin-right: 4px;
+  background: rgba(255, 255, 255, 0.14);
+}
+.biaToolRow .biaSeg.active {
+  background: #73c3ff;
+  color: #000000;
+}
+
+/* admin log */
+.biaLogRow.biaLogDanger {
+  background: linear-gradient(rgba(255, 214, 40, 0.92), rgba(214, 170, 10, 0.92));
+  color: #000000;
+}
+.biaLogDanger .biaLogTime {
+  color: #3a3000;
+}
+.biaLogGroup {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-shrink: 0;
+  height: 26px;
+  padding: 0 10px;
+  margin-bottom: 1px;
+  color: #dfe8ee;
+  cursor: pointer;
+  background: rgba(70, 90, 105, 0.55);
+}
+.biaLogGroup:hover {
+  background: rgba(115, 195, 255, 0.35);
+}
+.biaLogCaret {
+  display: flex;
+  width: 0px;
+  height: 0px;
+  margin-right: 10px;
+  flex-shrink: 0;
+  border-style: solid;
+  border-width: 5px 0px 5px 8px;
+  border-color: transparent transparent transparent #ffffff;
+}
+.biaLogGroup.open .biaLogCaret {
+  border-width: 8px 5px 0px 5px;
+  border-color: #ffffff transparent transparent transparent;
+}
+.biaLogGroupName {
+  display: flex;
+  width: 330px;
+  font-size: 14px;
+}
+.biaLogGroupCount {
+  display: flex;
+  justify-content: center;
+  min-width: 26px;
+  padding: 0 6px;
+  margin-right: 12px;
+  font-size: 12px;
+  color: #000000;
+  background: #b9c4cc;
+}
+.biaLogGroupLast {
+  display: flex;
+  margin-left: auto;
+  font-size: 12px;
+  color: #9ab;
+}
+.biaLogGroupBody {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  padding-left: 18px;
+  margin-bottom: 4px;
+}
+.biaLogRow.biaLogSub {
+  height: 24px;
+  opacity: 0.9;
 }

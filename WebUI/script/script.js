@@ -680,10 +680,10 @@ function action(playerName, squadId, isSquadPrivate) {
     if (enableAssistFunction == true) {
       if (isInAssistQueue == false) {
         document.getElementById("popupelements").innerHTML +=
-          '<div id="popupelement"><div id="assistEnemy" onclick="assist()">Assist</div></div>';
+          '<div id="popupelement" onclick="assist()"><div id="assistEnemy">Assist</div></div>';
       } else {
         document.getElementById("popupelements").innerHTML +=
-          '<div id="popupelement"><div id="cancelAssistEnemy" onclick="cancelAssist()">Cancel Assist</div></div>';
+          '<div id="popupelement" onclick="cancelAssist()"><div id="cancelAssistEnemy">Cancel Assist</div></div>';
       }
     }
     if (localPlayerIsSquadLeader == true) {
@@ -2575,6 +2575,7 @@ function biaIsMapAdmin() {
   return isOwner === true || canUseMapFunctions === true || canEditMapList === true;
 }
 function biaRefreshAdminUi() {
+  biaEnsureKitToggle();
   biaEnforceTabs();
   biaEnsureQueuePanel();
   biaRenderQueue();
@@ -2857,7 +2858,7 @@ function updateScoreboardBody2(sendThis2) {
   }
 }
 function updateScoreboardBody3(size) {
-  biaSbFlush();
+  biaSbFlush(["table1tbody", "table2tbody"]);
   size = parseInt(size, 10) || 0;
   var t1b = biaById("table1tbody");
   var t2b = biaById("table2tbody");
@@ -2873,12 +2874,18 @@ function updateScoreboardBody3(size) {
   }
   var sb = biaById("scoreboard");
   var tables = biaById("tables");
+  // Live refresh while the menu is open: if another tab (Settings, Map
+  // Rotation...) is showing, update the rows but don't pop the tables over it.
+  var ht = biaById("headertabs");
+  var menuOpen = ht && ht.style.display === "flex";
+  var sbTab = biaById("scoreboardTab");
+  var onOtherTab = (menuOpen && sbTab && !sbTab.classList.contains("active")) || biaStatsView === "rotation";
   if (sb) {
     sb.style.display = "flex";
     sb.style.visibility = "visible";
     sb.style.opacity = "1";
   }
-  if (tables) {
+  if (tables && !onOtherTab) {
     tables.style.display = "flex";
     tables.style.visibility = "visible";
   }
@@ -2907,7 +2914,7 @@ function updateScoreboardBody4(sendThis3) {
       playerNameArg +
       "&grave;, " +
       0 +
-      ')" class="sbRow"><div class="sbCell" id="place3">' +
+      ')" class="sbRow ' + (sendThis3[7] || "") + '"><div class="sbCell" id="place3">' +
       place3 +
       '</div><div class="sbCell" id="name3">' +
       sendThis3[1] +
@@ -2950,7 +2957,7 @@ function updateScoreboardBody5(sendThis4) {
       playerNameArg +
       "&grave;, " +
       0 +
-      ')" class="sbRow"><div class="sbCell" id="place4">' +
+      ')" class="sbRow ' + (sendThis4[7] || "") + '"><div class="sbCell" id="place4">' +
       place4 +
       '</div><div class="sbCell" id="name4">' +
       sendThis4[1] +
@@ -2984,7 +2991,7 @@ function updateScoreboardBody5(sendThis4) {
   }
 }
 function updateScoreboardBody6() {
-  biaSbFlush();
+  biaSbFlush(["table3tbody", "table4tbody"]);
   var t3b = biaById("table3tbody");
   var t4b = biaById("table4tbody");
   if (t3b && place3 < BIA_SQUAD_BOTTOM_ROWS) {
@@ -3047,12 +3054,15 @@ function clearScoreboardBody() {
   place4 = 0;
   biaSbSavedScroll = {};
   biaSbBuf = {};
-  biaSbReset(1, "RU", "50");
-  biaSbReset(2, "US", "50");
+  biaSbReset(1, "RU", "50", true);
+  biaSbReset(2, "US", "50", true);
+  biaSetStatsView("round", true);
 }
 
 
+var biaHoverSquad = null;
 function showWholeSquad(squad) {
+  biaHoverSquad = squad;
   if (squad != "squad0" && squad != "esquad0") {
     Array.prototype.forEach.call(
       document.getElementsByClassName(squad),
@@ -3064,6 +3074,7 @@ function showWholeSquad(squad) {
   }
 }
 function hideWholeSquad(squad) {
+  if (biaHoverSquad === squad) biaHoverSquad = null;
   Array.prototype.forEach.call(
     document.getElementsByClassName(squad),
     function (element) {
@@ -5879,20 +5890,19 @@ function biaRenderList() {
     return;
   }
   if (biaListMode === "log") {
+    var clearRow =
+      '<div class="biaLogTools"><div id="biaClearLogBtn" class="biaListBtn biaTipBtn" ' +
+      'data-tip="Delete every admin log entry (needs Can Edit Rights or server owner)" onclick="biaClearAdminLog()">Clear log</div>' +
+      '<div class="biaLogNote">Auto-clean: entries 6+ days old are removed every 6 days; the last 3 days are always kept.</div></div>';
     if (!biaAdminLog || biaAdminLog.length === 0) {
-      body.innerHTML = '<div class="biaListEmpty">No admin actions logged yet.</div>';
+      body.innerHTML = clearRow + '<div class="biaListEmpty">No admin actions logged yet.</div>';
+      biaBindTooltips(body);
+      biaI18nSoon();
       return;
     }
-    var lh = "";
-    for (var l = 0; l < biaAdminLog.length; l++) {
-      var e = biaAdminLog[l] || {};
-      lh +=
-        '<div class="biaListRow biaLogRow">' +
-        '<div class="biaLogTime">' + biaEsc(e.t || "") + "</div>" +
-        '<div class="biaLogText">' + biaEsc(e.text || "") + "</div>" +
-        "</div>";
-    }
-    body.innerHTML = lh;
+    body.innerHTML = clearRow + biaLogHtml(biaAdminLog);
+    biaBindTooltips(body);
+    biaI18nSoon();
     return;
   }
   var rows = biaListMode === "bans" ? biaBanList : biaAdminList;
@@ -5984,35 +5994,63 @@ function biaSbShell(n, team, tickets) {
     '<div class="sbBody" id="table' + n + 'tbody"></div>'
   );
 }
-function biaSbReset(n, team, tickets) {
+/* Soft reset (every refresh): keep the table, its scrolling body and its
+   scroll position; only the header text changes now and the rows are
+   swapped in one go at flush time. Rebuilding the whole table each refresh
+   is what made the list jump to the top for a frame before the saved
+   scroll position was put back. Hard reset (menu closed): rebuild. */
+var biaSbReplace = {};
+function biaSbReset(n, team, tickets, hard) {
   var t = biaById("table" + n);
   if (!t) return;
-  var body = biaById("table" + n + "tbody");
-  if (body && body.scrollTop > 0) {
-    biaSbSavedScroll["table" + n + "tbody"] = body.scrollTop;
+  var id = "table" + n + "tbody";
+  var head = biaById("table" + n + "head");
+  var body = biaById(id);
+  biaSbBuf[id] = [];
+  if (hard || !head || !body) {
+    t.innerHTML = biaSbShell(n, team, tickets);
+    biaSbReplace[id] = false;
+  } else {
+    var tc = biaById("team" + n);
+    var tk = biaById("tickets" + n);
+    if (tc) tc.innerHTML = team;
+    if (tk) tk.innerHTML = tickets;
+    biaSbReplace[id] = true;
   }
-  biaSbBuf["table" + n + "tbody"] = [];
-  t.innerHTML = biaSbShell(n, team, tickets);
-  biaAttachHints("table" + n + "tbody", "table" + n, n % 2 === 1 ? "left" : "right");
+  biaAttachHints(id, "table" + n, n % 2 === 1 ? "left" : "right");
 }
 function biaSbAppend(id, html) {
+  if (biaHideEnemyKits && id !== "table1tbody") {
+    html = html.replace(/ ID_M_[A-Z_]+/g, "");
+  }
   if (!biaSbBuf[id]) biaSbBuf[id] = [];
   biaSbBuf[id].push(html);
   if (biaSbFlushTimer === null) {
     biaSbFlushTimer = setTimeout(biaSbFlush, 0);
   }
 }
-function biaSbFlush() {
-  if (biaSbFlushTimer !== null) {
+/* ids: which tbodies to write (Body3 -> tables 1/2, Body6 -> 3/4), so a
+   squad table is never emptied before its own rows have arrived. */
+function biaSbFlush(ids) {
+  if (!ids && biaSbFlushTimer !== null) {
     clearTimeout(biaSbFlushTimer);
     biaSbFlushTimer = null;
   }
-  for (var id in biaSbBuf) {
-    if (!biaSbBuf.hasOwnProperty(id)) continue;
-    var arr = biaSbBuf[id];
-    if (!arr || arr.length === 0) continue;
+  var list = ids || Object.keys(biaSbBuf);
+  for (var i = 0; i < list.length; i++) {
+    var id = list[i];
+    var arr = biaSbBuf[id] || [];
     var el = biaById(id);
-    if (el) el.innerHTML += arr.join("");
+    if (!el) continue;
+    if (biaSbReplace[id]) {
+      // same element, same scroll position; content swapped in one write
+      var st = el.scrollTop;
+      el.innerHTML = arr.join("");
+      if (st > 0) biaSbSavedScroll[id] = st;
+      biaSbReplace[id] = false;
+    } else if (arr.length) {
+      el.innerHTML += arr.join("");
+    }
     biaSbBuf[id] = [];
   }
   biaSbAfterRender(false);
@@ -6036,6 +6074,8 @@ function biaSbSizeBodies() {
 function biaSbAfterRender(final) {
   biaApplyPin();
   biaSbSizeBodies();
+  if (biaHoverSquad) showWholeSquad(biaHoverSquad);
+  biaRestoreHover();
   for (var id in biaSbSavedScroll) {
     if (!biaSbSavedScroll.hasOwnProperty(id)) continue;
     var b = biaById(id);
@@ -6401,17 +6441,20 @@ function biaEnsureAdminTools() {
     '<div id="biaCancelVoteBtn" class="mapQueueBtn wide biaTipBtn" data-tip="Cancel the running map vote" onclick="biaCancelMapVote()">Cancel vote</div>' +
     "</div>" +
     '<div class="biaToolRow">' +
-    '<div class="biaToolLabel biaTipBtn" data-tip="Seconds from round end until the next map loads (Off = game default, about 60s)">Round end wait</div>' +
+    '<div class="biaToolLabel biaTipBtn" data-tip="Total end-of-round time (= the Regular row: menu + message + scoreboard). +/- changes the Regular menu time.">Round end wait</div>' +
     '<div class="mapQueueBtn biaTipBtn" data-tip="Shorter" onmousedown="biaHold(event, biaRoundEndStep, -1)">-</div>' +
-    '<div id="biaRoundEndVal">Off</div>' +
+    '<div id="biaRoundEndVal">' + biaEorTotal("regular") + 's</div>' +
     '<div class="mapQueueBtn biaTipBtn" data-tip="Longer" onmousedown="biaHold(event, biaRoundEndStep, 1)">+</div>' +
-    "</div>";
+    "</div>" +
+    biaMapChangeRowHtml() +
+    biaEorRowHtml("insta", "Instavote", "End-of-round timing used by the Insta button") +
+    biaEorRowHtml("regular", "Regular load", "Vote, load next round/map: passed votes, Next Round, Force next from queue and normal round ends");
   if (panel && panel.nextSibling) host.insertBefore(tools, panel.nextSibling);
   else host.appendChild(tools);
   biaBindTooltips(tools);
   biaEnforceTabs();
   try {
-    WebUI.Call("DispatchEvent", "WebUI:BiaGetRoundEnd");
+    WebUI.Call("DispatchEvent", "WebUI:BiaGetEorProfiles");
   } catch (e) {}
 }
 function biaSaySend(yell) {
@@ -6462,7 +6505,23 @@ function biaEnforceTabs() {
   }
   var cv = biaById("biaCancelVoteBtn");
   if (cv) cv.style.display = biaMapVoteActive ? "flex" : "none";
+  biaApplyStatsView();
+  biaPlaceKitToggle();
+  biaReportSbVisible();
   biaI18nSoon();
+}
+/* Lua only live-refreshes the open menu's scoreboard while it's on screen
+   (every second); other tabs stay untouched. */
+var biaSbVisibleSent = null;
+function biaReportSbVisible() {
+  var ht = biaById("headertabs");
+  var tables = biaById("tables");
+  var vis = !!(ht && ht.style.display === "flex" && tables && tables.style.display === "flex");
+  if (vis === biaSbVisibleSent) return;
+  biaSbVisibleSent = vis;
+  try {
+    WebUI.Call("DispatchEvent", "WebUI:BiaSbVisible", vis ? "1" : "0");
+  } catch (e) {}
 }
 var biaI18nPending = false;
 function biaI18nSoon() {
@@ -6541,6 +6600,7 @@ function getAdminLog(args) {
   function run() {
     try {
       WebUI.Call("DispatchEvent", "WebUI:BiaGetUiPrefs");
+      WebUI.Call("DispatchEvent", "WebUI:BiaGetEnemyKits");
     } catch (e) {}
     try {
       WebUI.Call("DispatchEvent", "WebUI:BiaKeyboard", "0");
@@ -6860,6 +6920,43 @@ var BIA_I18N = {
   "Pin me to the top of the scoreboard": ["将我固定在计分板顶部", "Закрепить меня вверху таблицы", "Закріпити мене вгорі таблиці", "自分をスコアボード上部に固定"],
   "Language": ["语言", "Язык", "Мова", "言語"],
   "Queue": ["队列", "Очередь", "Черга", "キュー"],
+  "Clear log": ["清空日志", "Очистить", "Очистити", "ログ消去"],
+  "Click again to clear": ["再点一次以清空", "Ещё раз для очистки", "Ще раз для очищення", "もう一度で消去"],
+  "Delete every admin log entry (needs Can Edit Rights or server owner)": ["删除所有管理日志（需要“可编辑权限”或服主）", "Удалить весь журнал админов (нужно право «Может менять права» или владелец)", "Видалити весь журнал адмінів (потрібне право «Може змінювати права» або власник)", "管理ログを全削除（権限編集またはオーナーが必要）"],
+  "Auto-clean: entries 6+ days old are removed every 6 days; the last 3 days are always kept.": ["自动清理：每 6 天删除 6 天及以上的记录；最近 3 天的记录始终保留。", "Автоочистка: раз в 6 дней удаляются записи старше 6 дней; последние 3 дня не удаляются.", "Автоочищення: раз на 6 днів видаляються записи старші за 6 днів; останні 3 дні не видаляються.", "自動整理：6日ごとに6日以上前の記録を削除。直近3日分は常に保持。"],
+  "Round": ["本局", "Раунд", "Раунд", "ラウンド"],
+  "Map change": ["换图方式", "Смена карты", "Зміна карти", "マップ切替"],
+  "End round": ["结束回合", "Конец раунда", "Кінець раунду", "ラウンド終了"],
+  "Next + restart": ["下一张+重开", "След.+рестарт", "Наст.+рестарт", "次+再開"],
+  "How Insta, Next Round and Force next change the map": ["“立即”、“下一回合”和“强制下一张”如何换图", "Как «Сразу», «След. раунд» и принудительная загрузка меняют карту", "Як «Одразу», «Наст. раунд» і примусове завантаження змінюють карту", "即時・次のラウンド・強制ロードのマップ切替方法"],
+  "mapList.endRound: real end of round with the timings below": ["mapList.endRound：正常回合结束，使用下方时间", "mapList.endRound: настоящий конец раунда с таймингами ниже", "mapList.endRound: справжній кінець раунду з таймінгами нижче", "mapList.endRound：下のタイミングで通常のラウンド終了"],
+  "mapList.runNextRound, then mapList.restartRound once the new map has loaded: no end-of-round screen, scores reset by the restart": ["mapList.runNextRound，新地图载入后再执行 mapList.restartRound：无回合结束画面，重开会重置分数", "mapList.runNextRound, затем mapList.restartRound после загрузки карты: без экрана конца раунда, рестарт сбрасывает счёт", "mapList.runNextRound, потім mapList.restartRound після завантаження карти: без екрана кінця раунду, рестарт скидає рахунок", "mapList.runNextRound の後、新マップ読込後に mapList.restartRound：終了画面なし、再開でスコアをリセット"],
+  "Chat messages": ["聊天消息", "Сообщения чата", "Повідомлення чату", "チャット"],
+  "Map rotation & votes": ["地图轮换与投票", "Ротация и голосования", "Ротація та голосування", "ローテーションと投票"],
+  "Server & mod settings": ["服务器与模组设置", "Настройки сервера и мода", "Налаштування сервера й мода", "サーバー・MOD設定"],
+  "Log & stats upkeep": ["日志与统计维护", "Журнал и статистика", "Журнал і статистика", "ログと統計の管理"],
+  "Other changes": ["其他更改", "Прочие изменения", "Інші зміни", "その他の変更"],
+  "No kicks, bans or player actions logged.": ["没有踢出、封禁或玩家操作记录。", "Киков, банов и действий с игроками нет.", "Кіків, банів і дій з гравцями немає.", "キック・BAN・プレイヤー操作の記録はありません。"],
+  "Instavote": ["即时投票", "Мгнов. голос", "Митт. голос", "即時投票"],
+  "Regular load": ["常规载入", "Обычная загр.", "Звич. заван.", "通常ロード"],
+  "Menu": ["菜单", "Меню", "Меню", "メニュー"],
+  "Msg": ["消息", "Сообщ.", "Повід.", "メッセージ"],
+  "Board": ["计分板", "Табло", "Табло", "スコア"],
+  "End-of-round menu time": ["回合结束菜单时间", "Время меню конца раунда", "Час меню кінця раунду", "ラウンド終了メニューの時間"],
+  "'Your team wins' message time": ["“你的队伍获胜”消息时间", "Время сообщения «Ваша команда победила»", "Час повідомлення «Ваша команда перемогла»", "「チームの勝利」表示時間"],
+  "End-of-round scoreboard time": ["回合结束计分板时间", "Время табло конца раунда", "Час табло кінця раунду", "ラウンド終了スコアボードの時間"],
+  "End-of-round timing used by the Insta button": ["“立即”按钮使用的回合结束时间", "Тайминг конца раунда для кнопки «Сразу»", "Таймінг кінця раунду для кнопки «Одразу»", "即時ボタンのラウンド終了タイミング"],
+  "Vote, load next round/map: passed votes, Next Round, Force next from queue and normal round ends": ["投票、载入下一回合/地图：通过的投票、下一回合、强制队列下一张以及正常回合结束", "Голосование, следующий раунд/карта: прошедшие голосования, «След. раунд», принудительная загрузка из очереди и обычный конец раунда", "Голосування, наступний раунд/карта: успішні голосування, «Наст. раунд», примусове завантаження з черги та звичайний кінець раунду", "投票・次のラウンド/マップ：可決した投票、次のラウンド、キューの強制ロード、通常のラウンド終了"],
+  "Total end-of-round time (= the Regular row: menu + message + scoreboard). +/- changes the Regular menu time.": ["回合结束总时间（=常规行：菜单+消息+计分板）。+/- 调整常规菜单时间。", "Общее время конца раунда (= строка «Обычная»: меню + сообщение + табло). +/- меняет время меню.", "Загальний час кінця раунду (= рядок «Звичайна»: меню + повідомлення + табло). +/- змінює час меню.", "ラウンド終了の合計時間（＝通常行：メニュー＋メッセージ＋スコア）。+/-で通常のメニュー時間を変更。"],
+  "Rotation": ["轮换", "Ротация", "Ротація", "ローテーション"],
+  "This map only / totals across the whole map rotation": ["仅本地图 / 整个地图轮换的总计", "Только эта карта / итог за всю ротацию", "Лише ця карта / підсумок за всю ротацію", "このマップのみ／ローテーション全体の合計"],
+  "Maps": ["地图", "Карты", "Карти", "マップ"],
+  "Name": ["名称", "Имя", "Ім'я", "名前"],
+  "Reset totals": ["重置总计", "Сброс итогов", "Скинути підсумки", "合計をリセット"],
+  "Start the rotation totals over (admin)": ["重新开始统计轮换总计（管理员）", "Начать итоги ротации заново (админ)", "Почати підсумки ротації заново (адмін)", "ローテーション合計をやり直す（管理者）"],
+  "No stats yet.": ["暂无统计。", "Статистики пока нет.", "Статистики поки немає.", "まだ統計はありません。"],
+  "Enemy kit icons": ["敌方兵种图标", "Иконки классов врага", "Іконки класів ворога", "敵の兵科アイコン"],
+  "Show or hide the kit (class) icons of enemy teams/squads for everyone. Admin only.": ["为所有人显示或隐藏敌方队伍/小队的兵种图标。仅限管理员。", "Показать/скрыть иконки классов врагов для всех. Только админ.", "Показати/сховати іконки класів ворогів для всіх. Лише адмін.", "敵チーム/分隊の兵科アイコンを全員に表示/非表示。管理者のみ。"],
   "old favorite map(s) could not be identified - re-save this favorite once to fix it.": ["张旧收藏地图无法识别——重新保存一次此收藏即可修复。", "карт(ы) старого избранного не распознаны — пересохраните его один раз.", "карт(и) старого обраного не розпізнано — перезбережіть його один раз.", "件の古いお気に入りマップを特定できません。一度保存し直してください。"]
 };
 
@@ -6875,6 +6972,7 @@ var BIA_I18N_RX = [
   [/^Vote failed: (.*)$/, ["投票未通过：$1", "Голосование провалено: $1", "Голосування провалено: $1", "投票否決：$1"]],
   [/^Vote cancelled: (.*)$/, ["投票已取消：$1", "Голосование отменено: $1", "Голосування скасовано: $1", "投票中止：$1"]],
   [/^(\d+) \/ (\d+) needed$/, ["$1 / $2 票", "$1 / $2 нужно", "$1 / $2 потрібно", "$1 / 必要 $2"]],
+  [/^Rotation: map (\d+) of (\d+)$/, ["轮换：第 $1 / $2 张地图", "Ротация: карта $1 из $2", "Ротація: карта $1 з $2", "ローテーション：$2 マップ中 $1"]],
   [/^Team (US|RU)$/, ["队伍 $1", "Команда $1", "Команда $1", "チーム $1"]],
   [/^Squad (Alpha|Bravo|Charlie|Delta|Echo|Foxtrot|Golf|Hotel|India|Juliet|Kilo|Lima|Mike|November|Oscar|Papa|Quebec|Romeo|Sierra|Tango|Uniform|Victor|Whiskey|Xray|Yankee|Zulu|Celeste|Faith|Haggard|Preston|Redford|Sweetwater)$/, ["小队 $1", "Отряд $1", "Загін $1", "分隊 $1"]]
 ];
@@ -7229,37 +7327,104 @@ function biaBigYell(p) {
 }
 
 /* --- round-end wait (seconds from round end to next map; 0 = game default) -- */
-var biaRoundEnd = 0;
-var biaRoundEndSendTimer = null;
-var BIA_ROUNDEND_STEPS = [0, 5, 10, 15, 20, 25, 30, 40, 45, 50, 55];
-function biaSetRoundEnd(p) {
+/* End-of-round screen profiles (seconds). The server sends the current
+   values; "Round end wait" shows the Regular total and changes its menu time. */
+var biaEor = { insta: { menu: 2, msg: 2, board: 2 }, regular: { menu: 15, msg: 4, board: 4 } };
+var biaEorMin = 2;
+var biaMapChangeMode = "endround";
+var biaEorSendTimer = {};
+function biaSetEorProfiles(p) {
   if (typeof p === "string") {
     try {
       p = JSON.parse(p);
     } catch (e) {
-      p = { seconds: +p };
+      p = null;
     }
   }
-  biaRoundEnd = p && p.seconds != null ? +p.seconds || 0 : 0;
-  biaRenderRoundEnd();
+  if (p && p.insta) biaEor.insta = p.insta;
+  if (p && p.regular) biaEor.regular = p.regular;
+  if (p && p.min) biaEorMin = p.min;
+  if (p && p.mode) biaMapChangeMode = p.mode;
+  biaRenderEor();
+}
+/* old name: the server used to send { seconds } here */
+function biaSetRoundEnd(p) {
+  biaRenderEor();
 }
 function biaRenderRoundEnd() {
-  var v = biaById("biaRoundEndVal");
-  if (v) v.textContent = biaRoundEnd > 0 ? biaRoundEnd + "s" : biaT("Off");
+  biaRenderEor();
 }
-function biaRoundEndStep(dir) {
-  var i = 0;
-  for (var k = 0; k < BIA_ROUNDEND_STEPS.length; k++) {
-    if (BIA_ROUNDEND_STEPS[k] <= biaRoundEnd) i = k;
-  }
-  i = biaClamp(i + dir, 0, BIA_ROUNDEND_STEPS.length - 1);
-  biaRoundEnd = BIA_ROUNDEND_STEPS[i];
-  biaRenderRoundEnd();
-  if (biaRoundEndSendTimer) clearTimeout(biaRoundEndSendTimer);
-  biaRoundEndSendTimer = setTimeout(function () {
-    biaRoundEndSendTimer = null;
-    WebUI.Call("DispatchEvent", "WebUI:BiaSetRoundEnd", JSON.stringify(biaRoundEnd));
+function biaEorTotal(kind) {
+  var e = biaEor[kind];
+  return e.menu + e.msg + e.board;
+}
+function biaRenderEor() {
+  var m1 = biaById("biaModeEnd");
+  var m2 = biaById("biaModeRestart");
+  if (m1) m1.classList[biaMapChangeMode === "endround" ? "add" : "remove"]("active");
+  if (m2) m2.classList[biaMapChangeMode === "restart" ? "add" : "remove"]("active");
+  var v = biaById("biaRoundEndVal");
+  if (v) v.textContent = biaEorTotal("regular") + "s";
+  ["insta", "regular"].forEach(function (kind) {
+    ["menu", "msg", "board"].forEach(function (f) {
+      var el = biaById("biaEor_" + kind + "_" + f);
+      if (el) el.textContent = biaEor[kind][f] + "s";
+    });
+  });
+}
+function biaEorSend(kind) {
+  if (biaEorSendTimer[kind]) clearTimeout(biaEorSendTimer[kind]);
+  biaEorSendTimer[kind] = setTimeout(function () {
+    biaEorSendTimer[kind] = null;
+    var e = biaEor[kind];
+    WebUI.Call("DispatchEvent", "WebUI:BiaSetEorProfile", JSON.stringify({ kind: kind, menu: e.menu, msg: e.msg, board: e.board }));
   }, 600);
+}
+/* holding +/- calls this repeatedly (biaHold) */
+function biaEorStep(key, dir) {
+  var parts = key.split(".");
+  var e = biaEor[parts[0]];
+  e[parts[1]] = biaClamp(e[parts[1]] + dir, biaEorMin, 60); // < 2s can crash the game
+  biaRenderEor();
+  biaEorSend(parts[0]);
+}
+/* Round end wait = Regular total; +/- changes the Regular menu time */
+function biaRoundEndStep(dir) {
+  biaEorStep("regular.menu", dir);
+}
+function biaSetMapChangeMode(mode) {
+  biaMapChangeMode = mode;
+  biaRenderEor();
+  WebUI.Call("DispatchEvent", "WebUI:BiaSetMapChangeMode", JSON.stringify(mode));
+}
+function biaMapChangeRowHtml() {
+  return (
+    '<div class="biaToolRow">' +
+    '<div class="biaToolLabel biaEorName biaTipBtn" data-tip="How Insta, Next Round and Force next change the map">Map change</div>' +
+    '<div id="biaModeEnd" class="biaSeg' + (biaMapChangeMode === "endround" ? " active" : "") +
+    ' biaTipBtn" data-tip="mapList.endRound: real end of round with the timings below" onclick="biaSetMapChangeMode(\'endround\')">End round</div>' +
+    '<div id="biaModeRestart" class="biaSeg' + (biaMapChangeMode === "restart" ? " active" : "") +
+    ' biaTipBtn" data-tip="mapList.runNextRound, then mapList.restartRound once the new map has loaded: no end-of-round screen, scores reset by the restart" onclick="biaSetMapChangeMode(\'restart\')">Next + restart</div>' +
+    "</div>"
+  );
+}
+function biaEorRowHtml(kind, label, tip) {
+  function stepper(f, short, ftip) {
+    return (
+      '<div class="biaEorLbl biaTipBtn" data-tip="' + ftip + '">' + short + "</div>" +
+      '<div class="mapQueueBtn biaKeepFont" onmousedown="biaHold(event, biaEorStep, \'' + kind + "." + f + '\', -1)">-</div>' +
+      '<div class="biaEorVal" id="biaEor_' + kind + "_" + f + '">' + biaEor[kind][f] + "s</div>" +
+      '<div class="mapQueueBtn biaKeepFont" onmousedown="biaHold(event, biaEorStep, \'' + kind + "." + f + '\', 1)">+</div>'
+    );
+  }
+  return (
+    '<div class="biaToolRow biaEorRow">' +
+    '<div class="biaToolLabel biaEorName biaTipBtn" data-tip="' + tip + '">' + label + "</div>" +
+    stepper("menu", "Menu", "End-of-round menu time") +
+    stepper("msg", "Msg", "\'Your team wins\' message time") +
+    stepper("board", "Board", "End-of-round scoreboard time") +
+    "</div>"
+  );
 }
 
 /* --- pin local player to the top of the scoreboard ------------------------- */
@@ -7537,3 +7702,432 @@ document.addEventListener("mouseover", function (e) {
   }, 30);
   biaSlide = state;
 });
+
+
+/* ==========================================================================
+   v3.5
+   ========================================================================== */
+function biaIsAnyAdmin() {
+  return isOwner === true || admin === true || biaIsMapAdmin() || canAlterServerSettings === true;
+}
+
+/* --- admin log: clear (two-click confirm; Gameface has no confirm()) -------- */
+var biaClearArmed = null;
+function biaClearAdminLog() {
+  var b = biaById("biaClearLogBtn");
+  if (!biaClearArmed) {
+    if (b) b.textContent = biaT("Click again to clear");
+    if (b) b.classList.add("biaDanger");
+    biaClearArmed = setTimeout(function () {
+      biaClearArmed = null;
+      var bb = biaById("biaClearLogBtn");
+      if (bb) {
+        bb.textContent = biaT("Clear log");
+        bb.classList.remove("biaDanger");
+      }
+    }, 3000);
+    return;
+  }
+  clearTimeout(biaClearArmed);
+  biaClearArmed = null;
+  WebUI.Call("DispatchEvent", "WebUI:BiaClearAdminLog");
+}
+
+/* --- enemy kit icons (server-wide setting, admin toggle above the tables) --
+   When hidden, kit classes are stripped from rows of tables 2-4 as they are
+   rendered, so only your own team (or your squad in squad deathmatch) shows
+   classes. Dead skulls are not kit icons and stay. */
+var biaHideEnemyKits = false;
+function biaSetKitPolicy(p) {
+  if (typeof p === "string") {
+    try {
+      p = JSON.parse(p);
+    } catch (e) {
+      p = {};
+    }
+  }
+  biaHideEnemyKits = !!(p && p.hide);
+  var t = biaById("biaKitToggle");
+  if (t) {
+    // checked = icons visible
+    if (biaHideEnemyKits) t.classList.remove("checked");
+    else t.classList.add("checked");
+  }
+}
+function biaEnsureKitToggle() {
+  var tables = biaById("tables");
+  var host = biaById("scoreboard");
+  if (!tables || !host) return;
+  var t = biaById("biaKitToggle");
+  if (t && t.parentNode !== host) {
+    t.parentNode.removeChild(t);
+    t = null;
+  }
+  if (!t) {
+    t = document.createElement("div");
+    t.id = "biaKitToggle";
+    t.className = "mapQueueToggle biaTipBtn" + (biaHideEnemyKits ? "" : " checked");
+    t.setAttribute("data-tip", "Show or hide the kit (class) icons of enemy teams/squads for everyone. Admin only.");
+    t.setAttribute("onclick", "biaToggleEnemyKits()");
+    t.innerHTML = '<div class="mapQueueToggleBox"></div><span>Enemy kit icons</span>';
+    host.appendChild(t);
+    try {
+      biaBindTooltips(t);
+    } catch (e) {}
+  }
+  biaPlaceKitToggle();
+}
+function biaPlaceKitToggle() {
+  biaPlaceSbControls();
+}
+function biaToggleEnemyKits() {
+  if (!biaIsAnyAdmin()) return;
+  // optimistic; the server broadcast confirms it for everyone
+  biaSetKitPolicy({ hide: !biaHideEnemyKits });
+  WebUI.Call("DispatchEvent", "WebUI:BiaSetEnemyKits", JSON.stringify(biaHideEnemyKits));
+  WebUI.Call("DispatchEvent", "WebUI:BiaSbForce");
+}
+
+
+/* ==========================================================================
+   v3.7
+   ========================================================================== */
+
+/* --- hover that survives a refresh -----------------------------------------
+   New row elements don't get :hover until the mouse moves, so the white
+   highlight vanished on every refresh. Remember the mouse position, find the
+   row under it after each render and give it .biaHover (style.css mirrors
+   every scoreboard :hover rule onto .biaHover). */
+var biaMouseX = -1;
+var biaMouseY = -1;
+var biaHoverRow = null;
+function biaRowOf(el) {
+  for (var d = 0; el && d < 6; d++, el = el.parentNode) {
+    if (el.classList && el.classList.contains("sbRow") && el.id !== "firstrow") return el;
+  }
+  return null;
+}
+function biaRowAtMouse() {
+  if (biaMouseX < 0) return null;
+  if (typeof document.elementFromPoint === "function") {
+    var hit = biaRowOf(document.elementFromPoint(biaMouseX, biaMouseY));
+    if (hit) return hit;
+  }
+  // fallback: compare row boxes (<= ~70 rows)
+  for (var n = 1; n <= 4; n++) {
+    var b = biaById("table" + n + "tbody");
+    if (!b || b.offsetParent === null) continue;
+    var br = b.getBoundingClientRect();
+    if (biaMouseY < br.top || biaMouseY > br.bottom || biaMouseX < br.left || biaMouseX > br.right) continue;
+    var rows = b.children;
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i].getBoundingClientRect();
+      if (biaMouseY >= r.top && biaMouseY < r.bottom) return rows[i];
+    }
+  }
+  return null;
+}
+function biaRestoreHover() {
+  if (biaHoverRow && biaHoverRow.classList) biaHoverRow.classList.remove("biaHover");
+  biaHoverRow = null;
+  var row = biaRowAtMouse();
+  if (row && row.id !== "empty") {
+    row.classList.add("biaHover");
+    biaHoverRow = row;
+  }
+}
+document.addEventListener(
+  "mousemove",
+  function (e) {
+    biaMouseX = e.clientX;
+    biaMouseY = e.clientY;
+    if (biaHoverRow && biaRowOf(e.target) !== biaHoverRow) {
+      biaHoverRow.classList.remove("biaHover");
+      biaHoverRow = null;
+    }
+  },
+  true
+);
+
+/* --- controls above the tables (kit toggle right, Round/Rotation left) -----
+   Positioned from the tables' on-screen box converted into #scoreboard's
+   local (pre-zoom) pixels. Measured too early (right after Tab / a tab
+   switch) the box is still 0x0 and the control jumped to a corner, so: hide
+   while the measurement is invalid and retry for ~1s. */
+var biaPlaceTries = 0;
+var biaPlaceTimer = null;
+var biaTablesBox = null; // last valid tables box in #scoreboard-local px
+function biaPlaceSbControls() {
+  var tables = biaById("tables");
+  var sb = biaById("scoreboard");
+  var kit = biaById("biaKitToggle");
+  var view = biaById("biaViewToggle");
+  var panel = biaById("biaRotPanel");
+  if (!tables || !sb) return;
+  var tablesOn = tables.style.display === "flex";
+  var panelOn = !!(panel && panel.style.display === "flex");
+  var showKit = !!(kit && biaIsAnyAdmin() && tablesOn);
+  var showView = !!(view && (tablesOn || panelOn));
+  if (kit && !showKit) kit.style.display = "none";
+  if (view && !showView) view.style.display = "none";
+  if (!showKit && !showView) return;
+
+  var box = null;
+  if (tablesOn) {
+    var sr = sb.getBoundingClientRect();
+    var tr = tables.getBoundingClientRect();
+    var s = sr.width / (sb.offsetWidth || 1);
+    if (tr.width > 50 && tr.height > 20 && s > 0.05 && tr.top > sr.top) {
+      box = { left: (tr.left - sr.left) / s, top: (tr.top - sr.top) / s, width: tr.width / s, height: tr.height / s };
+      biaTablesBox = box;
+    }
+  } else {
+    box = biaTablesBox; // rotation view: tables are hidden, reuse their last box
+  }
+  if (!box) {
+    if (showKit) {
+      kit.style.display = "flex";
+      kit.style.visibility = "hidden";
+    }
+    if (showView) {
+      view.style.display = "flex";
+      view.style.visibility = "hidden";
+    }
+    if (biaPlaceTries < 20 && biaPlaceTimer === null) {
+      biaPlaceTries++;
+      biaPlaceTimer = setTimeout(function () {
+        biaPlaceTimer = null;
+        biaPlaceSbControls();
+      }, 50);
+    }
+    return;
+  }
+  biaPlaceTries = 0;
+  var top = Math.max(0, box.top - 26);
+  if (showKit) {
+    kit.style.display = "flex";
+    kit.style.left = Math.max(0, box.left + box.width - (kit.offsetWidth || 150)) + "px";
+    kit.style.top = top + "px";
+    kit.style.visibility = "visible";
+  }
+  if (showView) {
+    view.style.display = "flex";
+    view.style.left = Math.max(0, box.left) + "px";
+    view.style.top = top + "px";
+    view.style.visibility = "visible";
+  }
+  if (panelOn) {
+    panel.style.left = box.left + "px";
+    panel.style.top = box.top + "px";
+    panel.style.width = box.width + "px";
+    panel.style.height = Math.max(200, box.height) + "px";
+  }
+}
+window.addEventListener("resize", function () {
+  biaPlaceSbControls();
+});
+
+/* --- Round / Rotation stats view (everyone) ----------------------------------
+   Rotation = totals for every player across the maps of this rotation,
+   kept by the server in mod.db (rotation_stats). Refreshes every 5s while
+   shown; the live tables stop refreshing while hidden. */
+var biaStatsView = "round";
+var biaRotTimer = null;
+var biaRotData = null;
+function biaEnsureViewToggle() {
+  var sb = biaById("scoreboard");
+  if (!sb || biaById("biaViewToggle")) return;
+  var v = document.createElement("div");
+  v.id = "biaViewToggle";
+  v.className = "biaTipBtn";
+  v.setAttribute("data-tip", "This map only / totals across the whole map rotation");
+  v.innerHTML =
+    '<div id="biaViewRound" class="biaSeg active" onclick="biaSetStatsView(\'round\')">Round</div>' +
+    '<div id="biaViewRot" class="biaSeg" onclick="biaSetStatsView(\'rotation\')">Rotation</div>';
+  sb.appendChild(v);
+  try {
+    biaBindTooltips(v);
+  } catch (e) {}
+}
+function biaSetStatsView(mode, quiet) {
+  biaStatsView = mode === "rotation" ? "rotation" : "round";
+  var r = biaById("biaViewRound");
+  var t = biaById("biaViewRot");
+  if (r) r.classList[biaStatsView === "round" ? "add" : "remove"]("active");
+  if (t) t.classList[biaStatsView === "rotation" ? "add" : "remove"]("active");
+  if (biaRotTimer) {
+    clearInterval(biaRotTimer);
+    biaRotTimer = null;
+  }
+  if (biaStatsView === "rotation") {
+    biaRequestRotStats();
+    biaRotTimer = setInterval(function () {
+      var p = biaById("biaRotPanel");
+      if (p && p.style.display === "flex") biaRequestRotStats();
+    }, 30000);
+  }
+  if (!quiet) biaApplyStatsView();
+}
+function biaRequestRotStats() {
+  try {
+    WebUI.Call("DispatchEvent", "WebUI:BiaGetRotationStats");
+  } catch (e) {}
+}
+/* called from biaEnforceTabs after every tab switch / open / close */
+function biaApplyStatsView() {
+  biaEnsureViewToggle();
+  var tables = biaById("tables");
+  var ht = biaById("headertabs");
+  var sbTab = biaById("scoreboardTab");
+  var menuOpen = ht && ht.style.display === "flex";
+  var onSb = menuOpen && sbTab && sbTab.classList.contains("active");
+  var panel = biaById("biaRotPanel");
+  if (biaStatsView === "rotation" && onSb) {
+    if (!panel) {
+      panel = document.createElement("div");
+      panel.id = "biaRotPanel";
+      panel.innerHTML = '<div id="biaRotHead"></div><div id="biaRotCols"></div><div id="biaRotBody"></div>';
+      biaById("scoreboard").appendChild(panel);
+    }
+    if (tables && tables.style.display === "flex") {
+      biaPlaceSbControls(); // remember the tables' box before hiding them
+      tables.style.display = "none";
+    }
+    panel.style.display = "flex";
+    biaRenderRotStats();
+  } else {
+    if (panel) panel.style.display = "none";
+    if (tables && onSb && tables.style.display !== "flex") tables.style.display = "flex";
+  }
+  biaPlaceSbControls();
+}
+function biaSetRotationStats(p) {
+  if (typeof p === "string") {
+    try {
+      p = JSON.parse(p);
+    } catch (e) {
+      p = null;
+    }
+  }
+  biaRotData = p;
+  biaRenderRotStats();
+}
+function biaRenderRotStats() {
+  var panel = biaById("biaRotPanel");
+  if (!panel || panel.style.display !== "flex") return;
+  var head = biaById("biaRotHead");
+  var cols = biaById("biaRotCols");
+  var body = biaById("biaRotBody");
+  var d = biaRotData || { rows: [], played: 0, length: 0 };
+  head.innerHTML =
+    '<div class="biaRotTitle">' + biaT("Rotation: map " + (d.played || 0) + " of " + (d.length || "?")) + "</div>" +
+    (biaIsAnyAdmin()
+      ? '<div class="biaListBtn biaTipBtn" data-tip="Start the rotation totals over (admin)" onclick="biaResetRotStats()">' + biaT("Reset totals") + "</div>"
+      : "");
+  cols.innerHTML =
+    '<div class="biaRc biaRcPos">#</div><div class="biaRc biaRcName">' + biaT("Name") + "</div>" +
+    '<div class="biaRc">' + biaT("Maps") + '</div><div class="biaRc">K</div><div class="biaRc">D</div>' +
+    '<div class="biaRc">K/D</div><div class="biaRc biaRcScore">' + biaT("SCORE") + "</div>";
+  var rows = d.rows || [];
+  if (!rows.length) {
+    body.innerHTML = '<div class="biaListEmpty">' + biaT("No stats yet.") + "</div>";
+  } else {
+    var html = "";
+    var me = typeof localPlayer === "string" ? localPlayer : "";
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i];
+      var kd = r.d > 0 ? (r.k / r.d).toFixed(2) : String(r.k);
+      var safe = biaEsc(r.name);
+      html +=
+        '<div class="biaRotRow' + (i % 2 ? " biaRotAlt" : "") + (safe === me ? " biaRotMe" : "") + (r.online ? "" : " biaRotOffline") + '">' +
+        '<div class="biaRc biaRcPos">' + (i + 1) + '</div><div class="biaRc biaRcName">' + safe + "</div>" +
+        '<div class="biaRc">' + r.m + '</div><div class="biaRc">' + r.k + '</div><div class="biaRc">' + r.d + "</div>" +
+        '<div class="biaRc">' + kd + '</div><div class="biaRc biaRcScore">' + r.s + "</div></div>";
+    }
+    var st = body.scrollTop;
+    body.innerHTML = html;
+    body.scrollTop = st;
+  }
+  try {
+    biaBindTooltips(head);
+  } catch (e) {}
+  biaAttachHints("biaRotBody", "biaRotPanel", "left");
+}
+function biaResetRotStats() {
+  if (!biaIsAnyAdmin()) return;
+  WebUI.Call("DispatchEvent", "WebUI:BiaResetRotationStats");
+}
+
+
+/* --- admin log: what matters on top, the rest folded by category -----------
+   Kicks / bans (yellow) and other actions on players stay in the main list;
+   everything else (map rotation, settings, chat, log upkeep) is folded into
+   one dropdown per category. Classified from the text, so old entries work. */
+var BIA_LOG_CATS = [
+  { id: "chat", label: "Chat messages", rx: /^\S.* (said|yelled|BIG-yelled): / },
+  { id: "danger", main: true, rx: /\b(kicked|banned|temp-banned|unbanned)\b/i },
+  { id: "player", main: true, rx: /( moved .+ to team | killed |promoted|admin rights|removed admin|swapped teams|assisted)/i },
+  { id: "map", label: "Map rotation & votes", rx: /(queue|favorite|maplist|insta|map vote|next map|next round|restarted the round|forced|map change)/i },
+  { id: "settings", label: "Server & mod settings", rx: /(preset|mod settings|server name|end-of-round|round end|enemy kit|password)/i },
+  { id: "upkeep", label: "Log & stats upkeep", rx: /(admin log|rotation stats)/i }
+];
+var biaLogOpen = {};
+function biaLogCat(text) {
+  for (var i = 0; i < BIA_LOG_CATS.length; i++) {
+    if (BIA_LOG_CATS[i].rx.test(text)) return BIA_LOG_CATS[i];
+  }
+  return { id: "other", label: "Other changes" };
+}
+function biaLogRowHtml(e, cls) {
+  return (
+    '<div class="biaListRow biaLogRow' + (cls ? " " + cls : "") + '">' +
+    '<div class="biaLogTime">' + biaEsc(e.t || "") + "</div>" +
+    '<div class="biaLogText">' + biaEsc(e.text || "") + "</div>" +
+    "</div>"
+  );
+}
+function biaLogHtml(entries) {
+  var main = [];
+  var groups = {};
+  var order = [];
+  for (var i = 0; i < entries.length; i++) {
+    var e = entries[i] || {};
+    var cat = biaLogCat(String(e.text || ""));
+    if (cat.main) {
+      main.push(biaLogRowHtml(e, cat.id === "danger" ? "biaLogDanger" : ""));
+    } else {
+      if (!groups[cat.id]) {
+        groups[cat.id] = { label: cat.label, rows: [], last: e.t || "" };
+        order.push(cat.id);
+      }
+      groups[cat.id].rows.push(biaLogRowHtml(e, "biaLogSub"));
+    }
+  }
+  var html = "";
+  for (var g = 0; g < order.length; g++) {
+    var id = order[g];
+    var grp = groups[id];
+    var open = biaLogOpen[id] === true;
+    html +=
+      '<div class="biaLogGroup' + (open ? " open" : "") + '" onclick="biaToggleLogGroup(\'' + id + '\')">' +
+      '<div class="biaLogCaret"></div>' +
+      '<div class="biaLogGroupName">' + biaT(grp.label) + "</div>" +
+      '<div class="biaLogGroupCount">' + grp.rows.length + "</div>" +
+      '<div class="biaLogGroupLast">' + biaEsc(grp.last) + "</div>" +
+      "</div>" +
+      (open ? '<div class="biaLogGroupBody">' + grp.rows.join("") + "</div>" : "");
+  }
+  if (main.length) {
+    html += main.join("");
+  } else if (order.length) {
+    html += '<div class="biaListEmpty">' + biaT("No kicks, bans or player actions logged.") + "</div>";
+  }
+  return html;
+}
+function biaToggleLogGroup(id) {
+  biaLogOpen[id] = !biaLogOpen[id];
+  var body = biaById("biaListBody");
+  var st = body ? body.scrollTop : 0;
+  biaRenderList();
+  if (body) body.scrollTop = st;
+}

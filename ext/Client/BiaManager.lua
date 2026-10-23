@@ -1,5 +1,5 @@
 ---@class BiaManager
--- Client bridge for BetterIngameAdmin:
+-- Client bridge for BetterIngameAdmin v3:
 --   WebUI -> NetEvents, NetEvents -> WebUI, F8/F9 for map votes,
 --   keyboard ownership for text fields, UI prefs saved on this PC.
 BiaManager = class 'BiaManager'
@@ -34,6 +34,14 @@ local FORWARD = {
 	['WebUI:BiaSaveFav'] = 'BiaSaveFav',
 	['WebUI:BiaDeleteFav'] = 'BiaDeleteFav',
 	['WebUI:BiaApplyFav'] = 'BiaApplyFav',
+	['WebUI:BiaClearAdminLog'] = 'BiaClearAdminLog',
+	['WebUI:BiaGetEnemyKits'] = 'BiaGetEnemyKits',
+	['WebUI:BiaSetEnemyKits'] = 'BiaSetEnemyKits',
+	['WebUI:BiaGetRotationStats'] = 'BiaGetRotationStats',
+	['WebUI:BiaGetEorProfiles'] = 'BiaGetEorProfiles',
+	['WebUI:BiaSetEorProfile'] = 'BiaSetEorProfile',
+	['WebUI:BiaSetMapChangeMode'] = 'BiaSetMapChangeMode',
+	['WebUI:BiaResetRotationStats'] = 'BiaResetRotationStats',
 	['WebUI:BiaGetRoundEnd'] = 'BiaGetRoundEnd',
 	['WebUI:BiaSetRoundEnd'] = 'BiaSetRoundEnd'
 }
@@ -49,6 +57,9 @@ local TO_JS = {
 	['BiaFavs'] = 'biaSetFavs',
 	['BiaBigYell'] = 'biaBigYell',
 	['BiaChatOverlay'] = 'biaChatOverlay',
+	['BiaKitPolicy'] = 'biaSetKitPolicy',
+	['BiaRotationStats'] = 'biaSetRotationStats',
+	['BiaEorProfiles'] = 'biaSetEorProfiles',
 	['BiaRoundEnd'] = 'biaSetRoundEnd'
 }
 

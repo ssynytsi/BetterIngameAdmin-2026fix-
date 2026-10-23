@@ -10,7 +10,8 @@ function Scoreboard:__init()
 
 	self.m_IgnoreReleaseTab = false
 	self.m_DontUpdate = false
-	self.m_UpdateScoreboardInterval = 2 -- Add to Admin Settings
+	self.m_UpdateScoreboardInterval = 2 -- seconds between scoreboard refreshes
+	self.m_LiveInMenu = false -- true while the opened menu shows the scoreboard tab (set by the WebUI)
 	self.m_CumulatedTimeForScoreboard = 0
 	self.m_BlockTab = false
 	self.m_IsEndOfRound = false
@@ -25,6 +26,14 @@ function Scoreboard:__init()
 	Events:Subscribe('WebUI:ClickScoreboard', self, self.OnWebUIClickScoreboard)
 	Events:Subscribe('WebUI:IgnoreReleaseTab', self, self.OnWebUIIgnoreReleaseTab)
 	Events:Subscribe('WebUI:ActiveFalse', self, self.OnWebUIActiveFalse)
+	-- WebUI changed how rows look (e.g. enemy kit icons): resend even if the data is the same
+	Events:Subscribe('WebUI:BiaSbForce', self, function(self)
+		self.m_LastJs = nil
+		self.m_CumulatedTimeForScoreboard = self.m_UpdateScoreboardInterval + 1
+	end)
+	Events:Subscribe('WebUI:BiaSbVisible', self, function(self, p_On)
+		self.m_LiveInMenu = p_On == '1' or p_On == 1 or p_On == true
+	end)
 
 	NetEvents:Subscribe('ServerInfo', self, self.OnServerInfo)
 	Events:Subscribe('WebUI:GetPlayerCount', self, self.OnGetPlayerCount)
@@ -79,10 +88,15 @@ end
 
 function Scoreboard:OnEngineUpdate(p_DeltaTime, p_SimulationDeltaTime)
 	if self.m_Active == false then
+		-- closed: the WebUI cleared its rows, so the next open must send everything
+		self.m_LastJs = nil
 		return
 	end
 
-	if self.m_UpdateScoreboardInterval < self.m_CumulatedTimeForScoreboard and self.m_DontUpdate == false then
+	-- m_DontUpdate = the clickable menu is open. It used to freeze the
+	-- scoreboard completely; now it keeps refreshing while the scoreboard tab
+	-- is the one on screen (other tabs aren't touched).
+	if self.m_UpdateScoreboardInterval < self.m_CumulatedTimeForScoreboard and (self.m_DontUpdate == false or self.m_LiveInMenu == true) then
 		local s_Player = PlayerManager:GetLocalPlayer()
 
 		if s_Player ~= nil then
@@ -109,7 +123,39 @@ function Scoreboard:OnEngineUpdate(p_DeltaTime, p_SimulationDeltaTime)
 	end
 end
 
+-- One refresh = ONE ExecuteJS call (was one per player, ~70 for a full server),
+-- and nothing at all when the data didn't change since the last refresh
+-- (no re-render -> no hover/scroll flicker, no wasted work).
 function Scoreboard:UpdateUI(p_Player)
+	self.m_JsBatch = {}
+	local s_Ok, s_Err = pcall(self.BuildUI, self, p_Player)
+	local s_Batch = self.m_JsBatch
+	self.m_JsBatch = nil
+
+	if not s_Ok then
+		print('BIA - SCOREBOARD - update failed: ' .. tostring(s_Err))
+		return
+	end
+
+	local s_Js = table.concat(s_Batch, ';')
+
+	if s_Js == self.m_LastJs then
+		return
+	end
+
+	self.m_LastJs = s_Js
+	WebUI:ExecuteJS(s_Js)
+end
+
+function Scoreboard:JS(p_Code)
+	if self.m_JsBatch ~= nil then
+		table.insert(self.m_JsBatch, p_Code)
+	else
+		WebUI:ExecuteJS(p_Code)
+	end
+end
+
+function Scoreboard:BuildUI(p_Player)
 	local s_GameMode = SharedUtils:GetCurrentGameMode()
 	local s_Size = 16
 	local s_UsTickets = " "
@@ -215,11 +261,11 @@ function Scoreboard:UpdateUI(p_Player)
 	end
 
 	local s_ScoreboardHeader = {s_Team1, s_Tickets1, s_Team2, s_Tickets2, p_Player.name, p_Player.squadId, p_Player.isSquadLeader, p_Player.isSquadPrivate}
-	WebUI:ExecuteJS(string.format("updateScoreboardHeader(%s)", json.encode(s_ScoreboardHeader)))
+	self:JS(string.format("updateScoreboardHeader(%s)", json.encode(s_ScoreboardHeader)))
 
 	if s_GameMode == "SquadDeathMatch0" then
 		local s_ScoreboardHeader2 = {s_Team3, s_Tickets3, s_Team4, s_Tickets4}
-		WebUI:ExecuteJS(string.format("updateScoreboardHeader2(%s)", json.encode(s_ScoreboardHeader2)))
+		self:JS(string.format("updateScoreboardHeader2(%s)", json.encode(s_ScoreboardHeader2)))
 	end
 
 	table.sort(s_PlayerListTeam1, function(a, b)
@@ -244,7 +290,7 @@ function Scoreboard:UpdateUI(p_Player)
 		end
 
 		local s_SendThis1 = {index, player.name, player.kills, player.deaths, player.score, player.squadId, player.alive, s_Kit, s_Ping, player.isSquadPrivate}
-		WebUI:ExecuteJS(string.format("updateScoreboardBody1(%s)", json.encode(s_SendThis1)))
+		self:JS(string.format("updateScoreboardBody1(%s)", json.encode(s_SendThis1)))
 	end
 
 	for index,player in pairs(s_PlayerListTeam2) do
@@ -269,10 +315,10 @@ function Scoreboard:UpdateUI(p_Player)
 			s_SendThis2 = {index, player.name, player.kills, player.deaths, player.score, true, s_Ping, s_Kit, player.squadId}
 		end
 
-		WebUI:ExecuteJS(string.format("updateScoreboardBody2(%s)", json.encode(s_SendThis2)))
+		self:JS(string.format("updateScoreboardBody2(%s)", json.encode(s_SendThis2)))
 	end
 
-	WebUI:ExecuteJS(string.format("updateScoreboardBody3(%s)", json.encode(s_Size)))
+	self:JS(string.format("updateScoreboardBody3(%s)", json.encode(s_Size)))
 
 	if s_GameMode == "SquadDeathMatch0" then
 		table.sort(s_PlayerListTeam3, function(a, b)
@@ -290,15 +336,21 @@ function Scoreboard:UpdateUI(p_Player)
 				s_Ping = self.m_PingTable[player.name]
 			end
 
+			local s_Kit3 = "ID_M_DEAD"
+
+			if player.customization ~= nil then
+				s_Kit3 = CharacterCustomizationAsset(player.customization).labelSid
+			end
+
 			local s_SendThis3 = {}
 
 			if self.m_ShowEnemyCorpses == true then
-				s_SendThis3 = {index, player.name, player.kills, player.deaths, player.score, player.alive, s_Ping}
+				s_SendThis3 = {index, player.name, player.kills, player.deaths, player.score, player.alive, s_Ping, s_Kit3}
 			else
-				s_SendThis3 = {index, player.name, player.kills, player.deaths, player.score, true, s_Ping}
+				s_SendThis3 = {index, player.name, player.kills, player.deaths, player.score, true, s_Ping, s_Kit3}
 			end
 
-			WebUI:ExecuteJS(string.format("updateScoreboardBody4(%s)", json.encode(s_SendThis3)))
+			self:JS(string.format("updateScoreboardBody4(%s)", json.encode(s_SendThis3)))
 		end
 
 		for index,player in pairs(s_PlayerListTeam4) do
@@ -308,18 +360,24 @@ function Scoreboard:UpdateUI(p_Player)
 				s_Ping = self.m_PingTable[player.name]
 			end
 
+			local s_Kit4 = "ID_M_DEAD"
+
+			if player.customization ~= nil then
+				s_Kit4 = CharacterCustomizationAsset(player.customization).labelSid
+			end
+
 			local s_SendThis4 = {}
 
 			if self.m_ShowEnemyCorpses == true then
-				s_SendThis4 = {index, player.name, player.kills, player.deaths, player.score, player.alive, s_Ping}
+				s_SendThis4 = {index, player.name, player.kills, player.deaths, player.score, player.alive, s_Ping, s_Kit4}
 			else
-				s_SendThis4 = {index, player.name, player.kills, player.deaths, player.score, true, s_Ping}
+				s_SendThis4 = {index, player.name, player.kills, player.deaths, player.score, true, s_Ping, s_Kit4}
 			end
 
-			WebUI:ExecuteJS(string.format("updateScoreboardBody5(%s)", json.encode(s_SendThis4)))
+			self:JS(string.format("updateScoreboardBody5(%s)", json.encode(s_SendThis4)))
 		end
 
-		WebUI:ExecuteJS("updateScoreboardBody6()")
+		self:JS("updateScoreboardBody6()")
 	end
 end
 
