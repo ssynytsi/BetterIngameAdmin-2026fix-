@@ -3,7 +3,6 @@ Provides addition functions for players and admins.<br>
 
 Note: You need the <a href="https://github.com/FlashHit/VU-Mods/tree/master/gameAdmin">gameAdmin</a> mod for this to work.
 
-<img width="3440" height="1440" alt="Screenshot (770)" src="https://github.com/user-attachments/assets/120e7d68-b23c-42f9-bfd2-10efc4e8a05d" />
 <img width="3440" height="1440" alt="Screenshot (769)" src="https://github.com/user-attachments/assets/51266af8-4c92-41b2-95de-a07b8de11740" />
 <img width="3440" height="1440" alt="Screenshot (770)" src="https://github.com/user-attachments/assets/120e7d68-b23c-42f9-bfd2-10efc4e8a05d" />
 <img width="3440" height="1440" alt="Screenshot (769)" src="https://github.com/user-attachments/assets/51266af8-4c92-41b2-95de-a07b8de11740" />
